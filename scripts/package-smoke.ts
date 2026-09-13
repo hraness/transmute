@@ -46,6 +46,10 @@ const nodeImportSpecifiers = importSpecifiers.slice(0, 8);
 const maximumPackedFiles = 450;
 const maximumPackedBytes = 4_300_000;
 const maximumUnpackedBytes = 11_300_000;
+const packedHtmlExamplePaths = [
+  "examples/html/music-video.html",
+  "examples/html/music-video.json",
+] as const;
 const requiredPackedPaths = [
   "PRIVACY.md",
   "LICENSE",
@@ -72,6 +76,7 @@ const requiredPackedPaths = [
   "apps/desktop/studio/drivers/blender_driver.py",
   "apps/desktop/studio/drivers/cadquery_driver.py",
   "apps/desktop/studio/education/driver.py",
+  ...packedHtmlExamplePaths,
   "examples/studio/blender/product.py",
   "examples/studio/education/scene.py",
   "examples/studio/native-workflow.ts",
@@ -101,7 +106,7 @@ const forbiddenPackedPaths = [
   { label: "native runtime build tree", pattern: /^apps\/desktop\/runtime\//u },
   { label: "native shell source", pattern: /^apps\/desktop\/src\//u },
   { label: "property-test support", pattern: /^apps\/desktop\/testing\//u },
-  { label: "development example", pattern: /^examples\/(?!studio\/)/u },
+  { label: "development example", pattern: /^examples\/(?!studio\/|html\/music-video\.(?:html|json)$)/u },
   { label: "native qualification source", pattern: /(?:^|\/)(?:test_|qualify_)[^/]*\.py$/u },
   { label: "native live qualification", pattern: /(?:^|\/)qualify-[^/]*\.ts$/u },
   { label: "native application manifest", pattern: /^apps\/desktop\/app\.zon$/u },
@@ -959,6 +964,41 @@ if (Buffer.from(pngs[0]).equals(Buffer.from(pngs[1]))) throw new Error("Packed S
   ) {
     throw new Error("Packed CLI did not emit the admitted Two.js scaffold.");
   }
+  await mkdir(join(consumer, "examples", "html"), { recursive: true });
+  for (const examplePath of packedHtmlExamplePaths) {
+    await writeFile(join(consumer, examplePath), await readFile(join(installedPackage, examplePath)), { flag: "wx" });
+  }
+  const publicHtmlFixture = `
+const { HtmlSceneInputSchema, HtmlOverlayMusicTimingSchema, sampleHtmlOverlayMusicClock, htmlOverlayMusicPulse } = await import("@hraness/slopcamera/local/html-overlay");
+const installedHtmlScene = HtmlSceneInputSchema.parse(await Bun.file("examples/html/music-video.json").json());
+const installedMusic = HtmlOverlayMusicTimingSchema.parse(installedHtmlScene.parameters.music);
+if (installedHtmlScene.audio !== undefined || installedMusic.bpm !== 88.88 || installedMusic.beatOffsetUs !== 0 || installedMusic.beatsPerBar !== 4) {
+  throw new Error("Packed music-video example did not retain its explicit timing and silent source.");
+}
+const musicTiming = HtmlOverlayMusicTimingSchema.parse({ bpm: 120, beatOffsetUs: 250_000, beatsPerBar: 4 });
+const downbeat = sampleHtmlOverlayMusicClock(2_250_000, musicTiming);
+const preRoll = sampleHtmlOverlayMusicClock(0, musicTiming);
+if (downbeat.beatPosition !== 4 || downbeat.beatIndex !== 4 || downbeat.beatPhase !== 0 || downbeat.barIndex !== 1 || downbeat.barPhase !== 0
+  || preRoll.beatPosition !== -0.5 || preRoll.beatIndex !== -1 || preRoll.beatPhase !== 0.5 || preRoll.barIndex !== -1 || preRoll.barPhase !== 0.875
+  || htmlOverlayMusicPulse(0) !== 1 || htmlOverlayMusicPulse(0.5) !== 0) {
+  throw new Error("Packed HTML music helpers did not preserve absolute-time beat and pulse semantics.");
+}
+`;
+  await run([process.execPath, "-e", publicHtmlFixture], consumer, packageEnvironment);
+  const installedHtmlPlan = record(JSON.parse(await runOutput([
+    join(consumer, "node_modules", ".bin", "slopcamera"),
+    "html", "render", "--input", "examples/html/music-video.json", "--dry-run", "--json",
+  ], consumer, packageEnvironment)) as unknown, "packed HTML music-video dry-run");
+  if (
+    installedHtmlPlan.kind !== "slopcamera.html-scene-plan" || installedHtmlPlan.schemaVersion !== 1
+    || installedHtmlPlan.executed !== false || installedHtmlPlan.audio !== "none" || installedHtmlPlan.audioValidated !== false
+    || installedHtmlPlan.frameCount !== 1_297 || installedHtmlPlan.requestedDurationUs !== 43_204_320 || installedHtmlPlan.durationUs !== 43_233_333
+    || installedHtmlPlan.width !== 1_280 || installedHtmlPlan.height !== 720 || installedHtmlPlan.fps !== 30
+    || installedHtmlPlan.timingPolicy !== "ceil-frames-trim-or-pad-audio-v1"
+    || typeof installedHtmlPlan.authoringSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(installedHtmlPlan.authoringSha256)
+  ) {
+    throw new Error("Packed CLI did not preserve the installed music-video source and inert frame-rounded plan.");
+  }
   const doctorText = await runOutput([
     join(consumer, "node_modules", ".bin", "slopcamera"),
     "doctor",
@@ -1157,7 +1197,7 @@ void [
 `;
   await writeFile(
     join(consumer, "index.ts"),
-    `${imports}\nvoid [${uses}];\n${publicTypeFixture}`,
+    `${imports}\nvoid [${uses}];\n${publicTypeFixture}\n${publicHtmlFixture}`,
   );
   await writeFile(
     join(consumer, "tsconfig.json"),
