@@ -11,6 +11,7 @@ import { marketingCases, marketingDeadlineMs, marketingScope, marketingBaselineP
 import { decodeWorkerJson, encodeWorkerJson, publishWorkerPhase, workerAttachmentMs, workerProtocolLimit } from "./preview-browser-protocol"
 import { readPreviewFile } from "./preview-file"
 import { assertOwnedPreviewEndpoint, closeOwnedPreviewBrowser } from "./preview-browser-shutdown"
+import { collectMarketingFontDiagnostic } from "./site-marketing-font-diagnostic"
 
 // This entry is bundled by the Bun parent, then executed by genuine pinned
 // Node. The temporary bundle resolves dependencies only from the explicit app.
@@ -50,19 +51,34 @@ async function main() {
     const cases = [], negativeControls = [], designCases = []
     for (const scenario of selectedCases) {
       let stage = "pair"
+      let currentFontDiagnostic, baselineFontDiagnostic
+      const fontDiagnostic = scenario.route === "/"
       try {
         const remaining = selectedDeadline - (performance.now() - started)
         assert.ok(remaining > 0, "Shell matrix exceeded its absolute deadline")
         const negative = scenario.width === 1440 && scenario.theme === "system" && scenario.system === "light"
         let design, baselineDetails, currentDom, baselineDom, baselinePaint
+        const noteMaxWidth = elements => {
+          const note = elements.find(item => item.key === ".hraness-marketing-install__heading-group > .install-note[0]")
+          assert.ok(note !== undefined, "Original install-note measurement required")
+          return note.styles["max-width"]
+        }
         const [evidence, old] = await cancellation.wait(() => {
           activePair = settleShellPair(
             () => checkShellCase(browser, request.current, scenario, "current", negative,
-              async page => { design = await observeMarketingDesign(page, scenario, request.current, request.fieldAssets, negative && scenario.route === "/"); currentDom = await marketingDom(page, true) }),
+              async page => {
+                design = await observeMarketingDesign(page, scenario, request.current, request.fieldAssets, negative && scenario.route === "/")
+                currentDom = await marketingDom(page, true)
+                if (fontDiagnostic) currentFontDiagnostic = await collectMarketingFontDiagnostic(page, noteMaxWidth(design.elements))
+              }),
             // Both sides already contain compiled install transports. This is
             // the new bf1e1a9 design baseline, never the historical migration.
             () => checkShellCase(browser, request.baseline, scenario, "current", false,
-              async page => { baselineDetails = await measureMarketingDetails(page, scenario); baselineDom = await marketingDom(page, false); baselinePaint = await measureMarketingPaintReference(page, scenario, "baseline") }))
+              async page => {
+                baselineDetails = await measureMarketingDetails(page, scenario)
+                baselineDom = await marketingDom(page, false); baselinePaint = await measureMarketingPaintReference(page, scenario, "baseline")
+                if (fontDiagnostic) baselineFontDiagnostic = await collectMarketingFontDiagnostic(page, noteMaxWidth(baselineDetails))
+              }))
           return bounded(activePair, `Current/baseline ${scenario.name}`, Math.min(60_000, remaining))
         })
         stage = "comparison"
@@ -81,11 +97,21 @@ async function main() {
         // Preserve the exact failed scenario without manufacturing result.json.
         // The parent reads this only after collecting the owned worker; success
         // still requires the original complete three-phase protocol.
+        const receiptErrors = []
+        if (stage === "comparison" && fontDiagnostic) try {
+          assert.ok(currentFontDiagnostic !== undefined && baselineFontDiagnostic !== undefined)
+          const bytes = encodeWorkerJson({ schemaVersion: 1, token: request.token, scope: marketingScope,
+            scenario: scenario.name, diagnosticOnly: true, current: currentFontDiagnostic, baseline: baselineFontDiagnostic })
+          assert.ok(bytes.byteLength <= 32 * 1024, "Bounded private font diagnostic")
+          await bounded(writeFile(join(dirname(requestPath), "site-marketing-font-diagnostic.json"), bytes, { flag: "wx", mode: 0o600 }),
+            "Private failure-only font diagnostic retention", 5_000)
+        } catch (receiptError) { receiptErrors.push(receiptError) }
         try {
           await bounded(writeFile(join(dirname(requestPath), "site-marketing-case-failure.json"),
             encodeWorkerJson(marketingCaseFailure(request, scenario.name, stage, cases, error)), { flag: "wx", mode: 0o600 }),
           "Partial shell failure evidence", 5_000)
-        } catch (receiptError) { throw new AggregateError([error, receiptError], "Shell case failure and receipt publication failed") }
+        } catch (receiptError) { receiptErrors.push(receiptError) }
+        if (receiptErrors.length > 0) throw new AggregateError([error, ...receiptErrors], "Shell case failure and receipt publication failed")
         throw error
       }
     }

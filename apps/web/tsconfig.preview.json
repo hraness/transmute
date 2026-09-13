@@ -71,6 +71,9 @@
     "scripts/generate-icons.ts",
     "scripts/verify-site-marketing.ts",
     "scripts/site-marketing-browser-contract.ts",
-    "scripts/site-marketing-browser-contract.test.ts"
+    "scripts/site-marketing-browser-contract.test.ts",
+    "scripts/lantern-material.test.ts",
+    "scripts/site-marketing-font-diagnostic.ts",
+    "scripts/site-marketing-font-diagnostic.test.ts"
   ]
 }

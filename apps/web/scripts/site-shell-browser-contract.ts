@@ -350,6 +350,93 @@ export async function settle(page: Page, direction?: "rtl"): Promise<void> {
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
   }, direction)
 }
+/** Discover native restoration transitions before observing stable paint. No
+ * expected values enter settlement; stable wrong paint still fails comparison. */
+export async function settleShellRestoredStyles(sheet: CSSStyleSheet, options: {
+  readonly href: string; readonly recovery: boolean; readonly properties: readonly string[]
+}): Promise<void> {
+  const link = sheet.ownerNode
+  if (!(link instanceof HTMLLinkElement)) throw new Error("Restored final CSS has no link owner")
+  const document = link.ownerDocument, view = document.defaultView
+  if (view === null) throw new Error("Restored final CSS has no native window")
+  const selectors = [".topbar", ".wordmark", ...(options.recovery ? [".route-state"] : [])]
+  const owners = selectors.map(selector => {
+    const matches = document.querySelectorAll(selector)
+    if (matches.length !== 1) throw new Error("Restored final CSS landmark inventory changed")
+    return matches[0]!
+  })
+  if (options.properties.length === 0 || options.properties.length > 256 || new Set(options.properties).size !== options.properties.length) {
+    throw new Error("Restored final CSS property inventory is invalid")
+  }
+  const started = view.performance.now(), deadline = started + 1_000
+  return new Promise((resolve, reject) => {
+    let frame: number | undefined, timer: number | undefined, ended = false, clock = started, callbacks = 0, lastFrame: number | undefined
+    let previous: { time: number; value: string } | undefined, last: unknown = null
+    const fail = (message: string) => new Error(`Restored final CSS ${message}; last observation ${JSON.stringify(last).slice(0, 2_048)}`)
+    const finish = (error?: unknown) => {
+      if (ended) return
+      ended = true
+      if (frame !== undefined) view.cancelAnimationFrame(frame)
+      if (timer !== undefined) view.clearTimeout(timer)
+      view.removeEventListener("pagehide", cancelled)
+      if (error !== undefined) reject(error)
+      else resolve()
+    }
+    const cancelled = () => finish(fail("document was closed or navigated during settlement"))
+    const check = () => {
+      const now = view.performance.now()
+      if (!Number.isFinite(started) || !Number.isFinite(now) || now < clock || now >= deadline) throw fail("exceeded its 1000ms local deadline")
+      clock = now
+      if (!(sheet instanceof CSSStyleSheet) || sheet.ownerNode !== link || link.sheet !== sheet || !link.isConnected
+        || link.ownerDocument !== document || link.href !== options.href || sheet.href !== options.href
+        || sheet.disabled || link.disabled || ![...document.styleSheets].includes(sheet)) throw fail("lost its enabled stylesheet identity")
+    }
+    const read = () => {
+      check()
+      let active = false
+      const values = owners.map((owner, index) => {
+        if (!owner.isConnected || owner.ownerDocument !== document || document.querySelectorAll(selectors[index]!).length !== 1
+          || document.querySelector(selectors[index]!) !== owner) throw fail("landmark owner changed")
+        // These reads discover pending transitions before getAnimations().
+        const rect = owner.getBoundingClientRect(), style = view.getComputedStyle(owner)
+        const geometry = [rect.x, rect.y + view.scrollY, rect.width, rect.height]
+        if (!geometry.every(Number.isFinite)) throw fail("has nonfinite geometry")
+        const styles = Object.fromEntries(options.properties.map(property => [property, style.getPropertyValue(property)]))
+        const animations = owner.getAnimations()
+        if (animations.length > 128) throw fail("has too many native animations")
+        for (const animation of animations) {
+          const effect = animation.effect
+          if (effect === null || !("target" in effect) || effect.target !== owner) throw fail("animation owner changed")
+          const timing = effect.getComputedTiming()
+          if (typeof timing.endTime !== "number" || !Number.isFinite(timing.endTime) || timing.endTime < 0
+            || typeof timing.duration !== "number" || !Number.isFinite(timing.duration) || timing.duration < 0
+            || typeof timing.iterations !== "number" || !Number.isFinite(timing.iterations) || timing.iterations < 0
+            || animation.playState === "paused" || !Number.isFinite(animation.playbackRate) || animation.playbackRate === 0) {
+            throw fail("animation must be finite and unpaused")
+          }
+          active ||= animation.pending || animation.playState === "running"
+        }
+        return { key: selectors[index], geometry, styles }
+      })
+      last = { active, values }
+      check()
+      return { active, value: JSON.stringify(values) }
+    }
+    const observe = (time: number) => {
+      try {
+        if (!Number.isFinite(time) || time < 0 || (lastFrame !== undefined && time < lastFrame) || ++callbacks > 256) throw fail("has invalid native frame evidence")
+        lastFrame = time
+        const { active, value } = read()
+        if (!active && previous !== undefined && time > previous.time && previous.value === value) { finish(); return }
+        previous = active ? undefined : { time, value }
+        frame = view.requestAnimationFrame(observe)
+      } catch (error) { finish(error) }
+    }
+    view.addEventListener("pagehide", cancelled)
+    timer = view.setTimeout(() => finish(fail("exceeded its 1000ms local deadline")), 1_000)
+    try { read(); frame = view.requestAnimationFrame(observe) } catch (error) { finish(error) }
+  })
+}
 export function resolvedShellTheme(preference: ShellCase["theme"], system: ShellCase["system"]): ShellCase["system"] {
   return preference === "system" ? system : preference
 }
@@ -1232,19 +1319,24 @@ export async function checkShellCase(browser: Browser, payload: ShellPayload, sc
         value.disabled = true
         return value
       }, `${payload.origin}${payload.finalCss}`)
+      const restorationFailures: unknown[] = []
       try {
         await settleCase()
         const disabled = await measure(page, [".topbar", ".wordmark", ...(scenario.route === "/404.html" ? [".route-state"] : [])])
         assert.ok(disabled.some((item, index) => JSON.stringify(item.styles) !== JSON.stringify(original[index]!.styles)),
           "Final CSS removal did not change real computed styles")
-      } finally {
+      } catch (error) { restorationFailures.push(error) }
+      try {
         await sheet.evaluate(value => {
           if (!(value instanceof CSSStyleSheet) || ![...document.styleSheets].includes(value)) throw new Error("Lost final CSS identity")
           value.disabled = false
         })
-        await sheet.dispose()
-      }
-      await settleCase()
+        await settleCase()
+        await sheet.evaluate(settleShellRestoredStyles, { href: `${payload.origin}${payload.finalCss}`,
+          recovery: scenario.route === "/404.html", properties })
+      } catch (error) { restorationFailures.push(error) }
+      finally { try { await sheet.dispose() } catch (error) { restorationFailures.push(error) } }
+      if (restorationFailures.length > 0) throw new AggregateError(restorationFailures, "Final CSS negative control or restoration failed")
       compareShellElements(await measure(page, [".topbar", ".wordmark", ...(scenario.route === "/404.html" ? [".route-state"] : [])]), original, "Restored final CSS")
     }
     // A separate current-design verifier may add observations inside this same

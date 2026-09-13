@@ -100,8 +100,23 @@ export function parseMarketingCaseFailure(value: unknown, request: MarketingRequ
   return item
 }
 export function marketingCaseFailure(request: MarketingRequest, scenario: string, stage: string, comparedCases: readonly string[], error: unknown) {
+  // Put bounded leaf diagnostics first: String(AggregateError) otherwise hides
+  // the actual native assertion beneath pair and restoration wrappers.
+  const messages: string[] = [], ancestors = new Set<unknown>()
+  let remaining = 16
+  const visit = (value: unknown, depth: number) => {
+    if (remaining-- <= 0) return
+    if (ancestors.has(value)) { messages.push("Circular aggregate failure"); return }
+    if (value instanceof AggregateError && depth < 8) {
+      ancestors.add(value)
+      for (const child of value.errors.slice(0, 4)) visit(child, depth + 1)
+      ancestors.delete(value)
+    }
+    try { messages.push(String(value).slice(0, 2048)) } catch { messages.push("Unprintable failure") }
+  }
+  visit(error, 0)
   return parseMarketingCaseFailure({ schemaVersion: 1, scope: marketingScope, token: request.token, accepted: false, completed: false,
-    scenario, stage, comparedCases: [...comparedCases], error: String(error).replace(/[\x00-\x1f]/gu, " ").slice(0, 2048) || "Unknown failure" }, request)
+    scenario, stage, comparedCases: [...comparedCases], error: messages.join(" | ").replace(/[\x00-\x1f]/gu, " ").slice(0, 2048) || "Unknown failure" }, request)
 }
 export function headingSize(width: number, level: 1 | 2): number {
   return level === 1 ? Math.min(64, Math.max(44, width * .051)) : Math.min(52, Math.max(38.4, width * .04))
@@ -364,8 +379,8 @@ export function compareMarketingEvidence(actual: ShellEvidence, baseline: ShellE
   assert.equal(normalizeMainOptIn(actual.dom), baseline.dom, "Copy, commands, logo and DOM outside the exact opt-ins must remain unchanged")
   assert.equal(actual.direction, baseline.direction); assert.equal(actual.recovery, baseline.recovery)
   assertMarketingFlow(actual.elements, baseline.elements)
-  const materialElements = paint.current.lantern === undefined ? actual.elements : projectLanternPaint(actual.elements, baseline.elements, paint.current.lantern)
-  compareMarketingElements(translateSiblings(projectMarketingHeaderRecords(materialElements, baseline.elements, "idle", header, scenario), actual), translateSiblings(baseline.elements, baseline), `${scenario.name} finite design differences`, paint)
+  // The element comparator asserts and projects Lantern paint exactly once.
+  compareMarketingElements(translateSiblings(projectMarketingHeaderRecords(actual.elements, baseline.elements, "idle", header, scenario), actual), translateSiblings(baseline.elements, baseline), `${scenario.name} finite design differences`, paint)
   compareShellFocusedSkip(actual.skip, baseline.skip, `${scenario.name} skip`)
   compareShellElements(translateSiblings(projectMarketingHeaderRecords(actual.focus, baseline.focus, "focus", header, scenario), actual), translateSiblings(baseline.focus, baseline), `${scenario.name} native focus`)
   compareShellElements(translateSiblings(projectMarketingHeaderRecords(actual.hover, baseline.hover, "hover", header, scenario), actual), translateSiblings(baseline.hover, baseline), `${scenario.name} native hover`)

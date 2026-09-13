@@ -16,10 +16,9 @@
 @import "./site-ask-ai-compatibility.css";
 @import "./site-footer-compatibility.css";
 
-/* The shell paint must remain in the unlayered site-owned cascade so it wins
-   over the legacy layered vendor fallback while retaining the compiled atom
-   contract in site-shell.stylex.ts. */
+/* Keep the compiled shell paint bridge while letting the canonical material
+   own normal, reduced-transparency and forced-color token values. */
 .topbar.hraness-material-chrome {
-  background-color: color-mix(in oklch, var(--surface, var(--ui-background, Canvas)) 90%, transparent);
-  backdrop-filter: blur(20px) saturate(1.1);
+  background-color: var(--hraness-material-chrome-paint);
+  backdrop-filter: var(--hraness-material-chrome-blur);
 }
