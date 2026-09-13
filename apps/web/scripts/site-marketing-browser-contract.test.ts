@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test"
 import { marketingScope, marketingBaselineProfile, marketingBaselineRevision, marketingBaselineTree, marketingCases,
   marketingDeadlineMs, needsLanternTransparency, normalizeMainOptIn, parseMarketingRequest, parseMarketingPhase, parseMarketingCaseFailure, marketingCaseFailure,
-  compareMarketingElements, headingSize, marketingHeadingIds, marketingSectionIds, assertMarketingPaint, assertMarketingProof, assertMarketingFlow, assertMarketingInstallNote,
+  compareMarketingElements, compareMarketingEvidence, headingSize, marketingHeadingIds, marketingSectionIds, assertMarketingPaint, assertMarketingProof, assertMarketingFlow, assertMarketingInstallNote,
   assertMarketingDerivedPaint, marketingPrimaryContrast, marketingHeaderColors, assertMarketingHeaderPaint, projectMarketingHeaderAction,
-  type MarketingHeaderPaint, type MarketingRequest, type MarketingTextExtent } from "./site-marketing-browser-contract"
-import { compareShellElements, parseShellRequest, type ShellElement } from "./site-shell-browser-contract"
+  type MarketingHeaderPaint, type MarketingPaintPair, type MarketingRequest, type MarketingTextExtent } from "./site-marketing-browser-contract"
+import { compareShellElements, parseShellRequest, shellAppearanceSteps, type ShellEvidence, type ShellElement } from "./site-shell-browser-contract"
 import { assertMarketingBaselineManifest, assertMarketingFontInventory } from "./verify-site-marketing"
 import type { ShellSnapshot } from "./verify-site-shell"
 import { normalizeLanternPaintValue, normalizeLanternWallImage } from "./site-lantern-browser-contract"
@@ -324,5 +324,56 @@ test("full snapshot retains fourteen ordinary fonts and the thirteen independent
   for (const artifacts of [ordinary, preview, [...ordinary.slice(1), ...preview], [...ordinary, ...preview.slice(1)],
     [...all, all[0]!], [...ordinary.slice(1), ...preview, { ...ordinary[0]!, path: "fonts/escaped.woff2" }]]) {
     expect(() => assertMarketingFontInventory(artifacts)).toThrow()
+  }
+})
+
+function completeLanternComparison(chromePaint = "oklch(0.996677 0.00538764 none / 0.9)") {
+  const oldPaint = "color(srgb 0.972549 0.968627 0.956863 / 0.84)"
+  const chrome = { "background-color": chromePaint, "border-bottom-color": "rgb(219, 216, 212)",
+    "backdrop-filter": "blur(20px) saturate(1.1)", "box-shadow": "inset 0 1px 0 rgba(255, 255, 255, 0.28)" }
+  const oldChrome = { "background-color": oldPaint, "border-bottom-color": "rgba(28, 25, 23, 0.12)",
+    "backdrop-filter": "blur(14px) saturate(1.4)", "box-shadow": "none" }
+  const actionPaint = { color: "rgb(28, 25, 23)", border: "rgb(28, 25, 23)", background: "rgba(0, 0, 0, 0)" }
+  const header = { idle: actionPaint, hover: actionPaint }
+  const paint: MarketingPaintPair = { baseline: { ink: actionPaint.color, line: "line", strongLine: "strong", primaryInk: "primary", header },
+    current: { ink: actionPaint.color, line: "line", strongLine: "strong", primaryInk: "primary", header,
+      lantern: { chrome, wall: {}, pane: {}, warm: {} } } }
+  const dom = '<main data-hraness-marketing-preset="editorial" id="main" tabindex="-1">'
+    + '<header class="hraness-marketing-hero slopcamera-product-hero hraness-material-wall"></header>'
+    + '<figure class="hraness-marketing-proof-frame hraness-material-pane"></figure>'
+    + '<details class="hraness-marketing-question hraness-material-disclosure"></details>'.repeat(9) + '</main>'
+  const skip = { ...element(".skip-link[0]", { position: "fixed" }), geometrySpace: "viewport" as const,
+    scrollY: 0, documentRect: [20, 100, 200, 100] }
+  const shared = { direction: "ltr" as const, recovery: true, skip,
+    focus: [headerAction(actionPaint, ".topbar a[5]")], hover: [headerAction(actionPaint)],
+    appearance: shellAppearanceSteps.map(({ name, active }) => ({ step: name, active, elements: [element("appearance[0]")] })) }
+  const unchanged = [element("#main[0]"), headerAction(actionPaint), element(".slopcamera-ask-ai[0]"), element("#hraness-site-footer[0]")]
+  const baseline: ShellEvidence = { ...shared, dom: normalizeMainOptIn(dom), elements: [element(".topbar[0]", oldChrome), ...unchanged] }
+  const current: ShellEvidence = { ...shared, dom, elements: [element(".topbar[0]", chrome), ...unchanged] }
+  return { current, baseline, paint, scenario: marketingCases[0]!, oldPaint }
+}
+
+test("complete Lantern evidence admits native chrome once while retaining exact paint and geometry", () => {
+  const { current, baseline, paint, scenario, oldPaint } = completeLanternComparison()
+  expect(() => compareMarketingEvidence(current, baseline, scenario, paint)).not.toThrow()
+  const header = current.elements[0]!
+  const changed = (replacement: ShellElement): ShellEvidence => ({ ...current, elements: [replacement, ...current.elements.slice(1)] })
+  for (const color of [oldPaint, "transparent", "oklch(0.996677 0.00538764 none / 0.84)"]) {
+    expect(() => compareMarketingEvidence(changed({ ...header, styles: { ...header.styles, "background-color": color } }), baseline, scenario, paint)).toThrow()
+  }
+  expect(() => compareMarketingEvidence(changed({ ...header, rect: [header.rect[0]!, header.rect[1]! + 1, ...header.rect.slice(2)] }), baseline, scenario, paint)).toThrow()
+  expect(() => compareMarketingEvidence(changed({ ...header, styles: { ...header.styles, "font-size": "17px" } }), baseline, scenario, paint)).toThrow()
+})
+
+test("complete Lantern comparison preserves geometry for arbitrary admitted chrome paint", () => {
+  let seed = 0x6c616e74
+  const next = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed }
+  for (let index = 0; index < 64; index++) {
+    const alpha = ((next() % 899) + 100) / 1000
+    const { current, baseline, paint, scenario } = completeLanternComparison(`rgba(${next() % 256}, ${next() % 256}, ${next() % 256}, ${alpha})`)
+    expect(() => compareMarketingEvidence(current, baseline, scenario, paint)).not.toThrow()
+    const header = current.elements[0]!, axis = next() % 4
+    const rect = header.rect.map((value, position) => position === axis ? value + 1 : value)
+    expect(() => compareMarketingEvidence({ ...current, elements: [{ ...header, rect }, ...current.elements.slice(1)] }, baseline, scenario, paint)).toThrow()
   }
 })

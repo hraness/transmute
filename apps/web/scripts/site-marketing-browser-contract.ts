@@ -364,8 +364,8 @@ export function compareMarketingEvidence(actual: ShellEvidence, baseline: ShellE
   assert.equal(normalizeMainOptIn(actual.dom), baseline.dom, "Copy, commands, logo and DOM outside the exact opt-ins must remain unchanged")
   assert.equal(actual.direction, baseline.direction); assert.equal(actual.recovery, baseline.recovery)
   assertMarketingFlow(actual.elements, baseline.elements)
-  const materialElements = paint.current.lantern === undefined ? actual.elements : projectLanternPaint(actual.elements, baseline.elements, paint.current.lantern)
-  compareMarketingElements(translateSiblings(projectMarketingHeaderRecords(materialElements, baseline.elements, "idle", header, scenario), actual), translateSiblings(baseline.elements, baseline), `${scenario.name} finite design differences`, paint)
+  // The element comparator asserts and projects Lantern paint exactly once.
+  compareMarketingElements(translateSiblings(projectMarketingHeaderRecords(actual.elements, baseline.elements, "idle", header, scenario), actual), translateSiblings(baseline.elements, baseline), `${scenario.name} finite design differences`, paint)
   compareShellFocusedSkip(actual.skip, baseline.skip, `${scenario.name} skip`)
   compareShellElements(translateSiblings(projectMarketingHeaderRecords(actual.focus, baseline.focus, "focus", header, scenario), actual), translateSiblings(baseline.focus, baseline), `${scenario.name} native focus`)
   compareShellElements(translateSiblings(projectMarketingHeaderRecords(actual.hover, baseline.hover, "hover", header, scenario), actual), translateSiblings(baseline.hover, baseline), `${scenario.name} native hover`)
