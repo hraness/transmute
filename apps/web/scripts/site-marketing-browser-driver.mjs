@@ -51,12 +51,13 @@ async function main() {
     const cases = [], negativeControls = [], designCases = []
     for (const scenario of selectedCases) {
       let stage = "pair"
+      let currentFontDiagnostic, baselineFontDiagnostic
+      const fontDiagnostic = scenario.route === "/" && scenario.width === 769
       try {
         const remaining = selectedDeadline - (performance.now() - started)
         assert.ok(remaining > 0, "Shell matrix exceeded its absolute deadline")
         const negative = scenario.width === 1440 && scenario.theme === "system" && scenario.system === "light"
-        let design, baselineDetails, currentDom, baselineDom, baselinePaint, currentFontDiagnostic, baselineFontDiagnostic
-        const fontDiagnostic = scenario.route === "/" && scenario.width === 769
+        let design, baselineDetails, currentDom, baselineDom, baselinePaint
         const noteMaxWidth = elements => {
           const note = elements.find(item => item.key === ".hraness-marketing-install__heading-group > .install-note[0]")
           assert.ok(note !== undefined, "Original install-note measurement required")
@@ -81,14 +82,6 @@ async function main() {
           return bounded(activePair, `Current/baseline ${scenario.name}`, Math.min(60_000, remaining))
         })
         stage = "comparison"
-        if (fontDiagnostic) {
-          assert.ok(currentFontDiagnostic !== undefined && baselineFontDiagnostic !== undefined)
-          const bytes = encodeWorkerJson({ schemaVersion: 1, token: request.token, scope: marketingScope,
-            scenario: scenario.name, diagnosticOnly: true, current: currentFontDiagnostic, baseline: baselineFontDiagnostic })
-          assert.ok(bytes.byteLength <= 32 * 1024, "Bounded private font diagnostic")
-          await bounded(writeFile(join(dirname(requestPath), `site-marketing-font-diagnostic-${selectedCases.indexOf(scenario)}.json`), bytes, { flag: "wx", mode: 0o600 }),
-            "Private font diagnostic retention", 5_000)
-        }
         assert.ok(design !== undefined && baselineDetails !== undefined, "Current design observations missing")
         assert.ok(typeof currentDom === "string" && typeof baselineDom === "string", "Exact DOM inventories missing")
         assert.equal(currentDom, baselineDom, "Original compiled class, attribute, copy and structure inventories stay exact")
@@ -104,11 +97,21 @@ async function main() {
         // Preserve the exact failed scenario without manufacturing result.json.
         // The parent reads this only after collecting the owned worker; success
         // still requires the original complete three-phase protocol.
+        const receiptErrors = []
+        if (stage === "comparison" && fontDiagnostic) try {
+          assert.ok(currentFontDiagnostic !== undefined && baselineFontDiagnostic !== undefined)
+          const bytes = encodeWorkerJson({ schemaVersion: 1, token: request.token, scope: marketingScope,
+            scenario: scenario.name, diagnosticOnly: true, current: currentFontDiagnostic, baseline: baselineFontDiagnostic })
+          assert.ok(bytes.byteLength <= 32 * 1024, "Bounded private font diagnostic")
+          await bounded(writeFile(join(dirname(requestPath), "site-marketing-font-diagnostic.json"), bytes, { flag: "wx", mode: 0o600 }),
+            "Private failure-only font diagnostic retention", 5_000)
+        } catch (receiptError) { receiptErrors.push(receiptError) }
         try {
           await bounded(writeFile(join(dirname(requestPath), "site-marketing-case-failure.json"),
             encodeWorkerJson(marketingCaseFailure(request, scenario.name, stage, cases, error)), { flag: "wx", mode: 0o600 }),
           "Partial shell failure evidence", 5_000)
-        } catch (receiptError) { throw new AggregateError([error, receiptError], "Shell case failure and receipt publication failed") }
+        } catch (receiptError) { receiptErrors.push(receiptError) }
+        if (receiptErrors.length > 0) throw new AggregateError([error, ...receiptErrors], "Shell case failure and receipt publication failed")
         throw error
       }
     }

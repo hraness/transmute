@@ -9,15 +9,14 @@ interface FontFaceDiagnostic { family: string; style: string; weight: string; st
 interface FontMetricDiagnostic {
   maxWidth: string; rect: number[]; styles: Record<string, string>; ancestors: Array<{ tag: string; styles: Record<string, string> }>
   fonts: FontFaceDiagnostic[]; fontCount: number; fontStatus: string
-  probe: { oneChPx: number; zeroTextPx: number; computedWidth: string }
+  originNoteMatches: number
 }
 interface PlatformFontDiagnostic { familyName: string; postScriptName: string; isCustomFont: boolean; glyphCount: number }
 export interface MarketingFontDiagnostic {
   kind: "marketing-font-diagnostic"; selector: string; capturedMaxWidth: string
-  beforeProbe: { maxWidth: string; fontSize: string; originNoteMatches: number }
   matchedFontRules: { rules: string[]; truncated: boolean }
-  before: FontMetricDiagnostic; after: FontMetricDiagnostic
-  platformBefore: PlatformFontDiagnostic[]; platformAfter: PlatformFontDiagnostic[]
+  snapshot: FontMetricDiagnostic
+  platformFonts: PlatformFontDiagnostic[]
 }
 
 interface MatchedFontStyle { cssProperties: readonly { name: string; value: string; disabled?: boolean }[] }
@@ -68,11 +67,8 @@ export function encodeMarketingFontDiagnostic(value: unknown): string {
   return text
 }
 
-async function platformFonts(session: CDPSession): Promise<PlatformFontDiagnostic[]> {
-  const document = await session.send("DOM.getDocument", { depth: 0 })
-  const node = await session.send("DOM.querySelector", { nodeId: document.root.nodeId, selector })
-  assert.ok(node.nodeId > 0, "Font diagnostic note missing")
-  const result = await session.send("CSS.getPlatformFontsForNode", { nodeId: node.nodeId })
+async function platformFonts(session: CDPSession, nodeId: number): Promise<PlatformFontDiagnostic[]> {
+  const result = await session.send("CSS.getPlatformFontsForNode", { nodeId })
   assert.ok(result.fonts.length <= 16, "Font diagnostic platform inventory exceeds bound")
   return result.fonts.map(font => {
     assert.ok(Number.isSafeInteger(font.glyphCount) && font.glyphCount >= 0)
@@ -81,34 +77,16 @@ async function platformFonts(session: CDPSession): Promise<PlatformFontDiagnosti
   })
 }
 
-/** Preserve the earlier captured value. The later explicit zero-glyph load is
- * diagnostic only and never changes target styles or the acceptance record. */
+/** Read-only failure evidence. Preserve the original captured value separately
+ * from this later snapshot; never settle fonts or change the acceptance record. */
 export async function collectMarketingFontDiagnostic(page: Page, capturedMaxWidth: string): Promise<MarketingFontDiagnostic> {
   assert.ok(capturedMaxWidth.length > 0 && capturedMaxWidth.length <= 256)
-  const beforeProbe = await page.evaluate(selector => {
-    const note = document.querySelector(selector)
-    if (!(note instanceof HTMLElement)) throw new Error("Font diagnostic note missing")
-    const style = getComputedStyle(note)
-    return { maxWidth: style.maxWidth, fontSize: style.fontSize, originNoteMatches: document.querySelectorAll(".origin-note").length }
-  }, selector)
-  const probe = await page.evaluateHandle(({ selector, fontProperties }) => {
-    const note = document.querySelector(selector)
-    if (!(note instanceof HTMLElement)) throw new Error("Font diagnostic note missing")
-    const style = getComputedStyle(note), probe = document.createElement("span")
-    probe.textContent = "0"
-    probe.style.cssText = "position:fixed;left:0;top:-10000px;display:block;width:1ch;min-width:0;max-width:none;height:auto;margin:0;padding:0;border:0;box-sizing:content-box;visibility:hidden;pointer-events:none"
-    for (const property of fontProperties) probe.style.setProperty(property, style.getPropertyValue(property))
-    document.body.append(probe)
-    return probe
-  }, { selector, fontProperties })
   let session: CDPSession | undefined, result: MarketingFontDiagnostic | undefined
   const failures: unknown[] = []
   try {
-    session = await page.context().newCDPSession(page)
-    await session.send("DOM.enable"); await session.send("CSS.enable")
-    const sample = () => probe.evaluate((probe, { selector, fontProperties }): FontMetricDiagnostic => {
+    const snapshot = await page.evaluate(({ selector, fontProperties }): FontMetricDiagnostic => {
       const note = document.querySelector(selector)
-      if (!(note instanceof HTMLElement) || !probe.isConnected) throw new Error("Font diagnostic ownership lost")
+      if (!(note instanceof HTMLElement)) throw new Error("Font diagnostic note missing")
       const pick = (element: Element) => {
         const style = getComputedStyle(element)
         return Object.fromEntries(fontProperties.map(property => [property, style.getPropertyValue(property).slice(0, 512)]))
@@ -121,40 +99,21 @@ export async function collectMarketingFontDiagnostic(page: Page, capturedMaxWidt
       const fonts = faces.slice(0, 16).map(face => ({ family: face.family.slice(0, 256), style: face.style.slice(0, 256),
         weight: face.weight.slice(0, 256), stretch: face.stretch.slice(0, 256), status: face.status, display: face.display,
         unicodeRange: face.unicodeRange.slice(0, 256) }))
-      const range = document.createRange(); range.selectNodeContents(probe)
-      const oneChPx = probe.getBoundingClientRect().width, zeroTextPx = range.getBoundingClientRect().width
-      if (![rect.x, rect.y, rect.width, rect.height, oneChPx, zeroTextPx].every(Number.isFinite)) throw new Error("Nonfinite font geometry")
+      if (![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)) throw new Error("Nonfinite font geometry")
       return { maxWidth: style.maxWidth, rect: [rect.x, rect.y, rect.width, rect.height], styles: pick(note), ancestors, fonts,
-        fontCount: faces.length, fontStatus: document.fonts.status, probe: { oneChPx, zeroTextPx, computedWidth: getComputedStyle(probe).width } }
+        fontCount: faces.length, fontStatus: document.fonts.status, originNoteMatches: document.querySelectorAll(".origin-note").length }
     }, { selector, fontProperties })
-    const before = await sample(), platformBefore = await platformFonts(session)
+    session = await page.context().newCDPSession(page)
+    await session.send("DOM.enable"); await session.send("CSS.enable")
     const documentNode = await session.send("DOM.getDocument", { depth: 0 })
     const noteNode = await session.send("DOM.querySelector", { nodeId: documentNode.root.nodeId, selector })
-    assert.ok(noteNode.nodeId > 0)
+    assert.ok(noteNode.nodeId > 0, "Font diagnostic note missing")
+    const fonts = await platformFonts(session, noteNode.nodeId)
     const matchedFontRules = selectMarketingFontRules(await session.send("CSS.getMatchedStylesForNode", { nodeId: noteNode.nodeId }))
-    await page.evaluate(async selector => {
-      const note = document.querySelector(selector)
-      if (!(note instanceof HTMLElement)) throw new Error("Font diagnostic note missing")
-      const style = getComputedStyle(note)
-      let timer: ReturnType<typeof setTimeout> | undefined
-      try {
-        await Promise.race([
-          (async () => {
-            await document.fonts.load(`${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`, "0")
-            await document.fonts.ready
-            await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
-          })(),
-          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("Font diagnostic load did not settle")), 2_000) }),
-        ])
-      } finally { clearTimeout(timer) }
-    }, selector)
-    const after = await sample(), platformAfter = await platformFonts(session)
-    result = { kind: "marketing-font-diagnostic", selector, capturedMaxWidth, beforeProbe, matchedFontRules, before, after, platformBefore, platformAfter }
+    result = { kind: "marketing-font-diagnostic", selector, capturedMaxWidth, snapshot, matchedFontRules, platformFonts: fonts }
     encodeMarketingFontDiagnostic(result)
   } catch (error) { failures.push(error) }
   finally {
-    try { await probe.evaluate(probe => probe.remove()) } catch (error) { failures.push(error) }
-    try { await probe.dispose() } catch (error) { failures.push(error) }
     if (session !== undefined) try { await session.detach() } catch (error) { failures.push(error) }
   }
   if (failures.length > 0) throw new AggregateError(failures, "Font diagnostic or owned cleanup failed")

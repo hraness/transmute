@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test"
+import { runInNewContext } from "node:vm"
 import type { Page } from "playwright-core"
 import { collectMarketingFontDiagnostic, encodeMarketingFontDiagnostic, selectMarketingFontRules } from "./site-marketing-font-diagnostic"
 
@@ -24,37 +25,64 @@ test("arbitrary Unicode diagnostics preserve exact JSON through the byte boundar
   }
 })
 
-test("font diagnostic preserves the prior measurement and always removes owned resources", async () => {
-  for (const fail of [false, true]) {
-    const events: string[] = [], failure = new Error("Platform font observation failed")
-    let samples = 0, evaluations = 0
-    const probe = { evaluate: () => {
-      samples++
-      if (samples > (fail ? 1 : 2)) { events.push("remove"); return Promise.resolve() }
-      return Promise.resolve({ maxWidth: samples === 1 ? "574.856px" : "556.71px" })
-    }, dispose: async () => { events.push("dispose") } }
-    const session = { send: async (method: string) => {
-      if (method === "DOM.getDocument") return { root: { nodeId: 1 } }
-      if (method === "DOM.querySelector") return { nodeId: 2 }
-      if (method === "CSS.getPlatformFontsForNode") {
-        if (fail) throw failure
-        return { fonts: [{ familyName: "Nebula Sans", postScriptName: "NebulaSans-Book", isCustomFont: true, glyphCount: 1 }] }
-      }
-      return {}
-    }, detach: async () => { events.push("detach") } }
-    const page = { evaluateHandle: async () => probe, evaluate: async () => {
-      if (evaluations++ === 0) { events.push("before-probe"); return { maxWidth: "574.856px", fontSize: "14.72px", originNoteMatches: 0 } }
-      events.push("zero-load"); return undefined
-    },
-      context: () => ({ newCDPSession: async () => session }) } as unknown as Page
-    if (fail) await expect(collectMarketingFontDiagnostic(page, "original62ch")).rejects.toThrow("Font diagnostic")
-    else {
-      const result = await collectMarketingFontDiagnostic(page, "original62ch")
-      expect(result.capturedMaxWidth).toBe("original62ch")
-      expect(result.beforeProbe).toEqual({ maxWidth: "574.856px", fontSize: "14.72px", originNoteMatches: 0 })
-      expect(result.before.maxWidth).toBe("574.856px"); expect(result.after.maxWidth).toBe("556.71px")
+function readOnlyPage(failAt?: string, failDetach = false) {
+  const events: string[] = [], operationError = new Error("Font observation failed"), detachError = new Error("Detach failed")
+  class Element {
+    tagName = "P"
+    parentElement = null
+    getBoundingClientRect() { return { x: 10, y: 20, width: 192, height: 205.3125 } }
+  }
+  const note = new Element(), fonts = [{ family: "Nebula Sans", style: "normal", weight: "400", stretch: "normal", status: "loaded", display: "swap", unicodeRange: "U+0-10FFFF" }]
+  Object.defineProperties(fonts, { status: { value: "loaded" }, load: { get() { throw new Error("Diagnostic must not load fonts") } }, ready: { get() { throw new Error("Diagnostic must not settle fonts") } } })
+  const document = { fonts, querySelector: () => note, querySelectorAll: () => [] }
+  const session = { send: async (method: string) => {
+    events.push(method)
+    if (method === failAt) throw operationError
+    if (method === "DOM.getDocument") return { root: { nodeId: 1 } }
+    if (method === "DOM.querySelector") return { nodeId: 2 }
+    if (method === "CSS.getPlatformFontsForNode") return { fonts: [{ familyName: "Nebula Sans", postScriptName: "NebulaSans-Book", isCustomFont: true, glyphCount: 1 }] }
+    return {}
+  }, detach: async () => { events.push("detach"); if (failDetach) throw detachError } }
+  const page = { evaluate: async (callback: (value: unknown) => unknown, value: unknown) => {
+    events.push("snapshot")
+    if (failAt === "snapshot") throw operationError
+    return runInNewContext(`(${callback.toString()})(${JSON.stringify(value)})`, {
+      document, HTMLElement: Element,
+      getComputedStyle: () => ({ maxWidth: "556.71px", getPropertyValue: (name: string) => name === "font-size" ? "14.72px" : "normal" }),
+    }) as unknown
+  }, context: () => ({ newCDPSession: async () => {
+    events.push("session")
+    if (failAt === "session") throw operationError
+    return session
+  } }) } as unknown as Page
+  return { page, events, operationError, detachError }
+}
+
+test("font diagnostic preserves the original measurement with one read-only snapshot and no font settlement", async () => {
+  const { page, events } = readOnlyPage()
+  const result = await collectMarketingFontDiagnostic(page, "574.856px")
+  expect(result.capturedMaxWidth).toBe("574.856px")
+  expect(result.snapshot.maxWidth).toBe("556.71px")
+  expect(result.snapshot.rect).toEqual([10, 20, 192, 205.3125])
+  expect(result.snapshot.styles["font-size"]).toBe("14.72px")
+  expect(result.snapshot.originNoteMatches).toBe(0)
+  expect(result.platformFonts[0]?.postScriptName).toBe("NebulaSans-Book")
+  expect(events.filter(event => event === "snapshot")).toHaveLength(1)
+  expect(events.at(-1)).toBe("detach")
+})
+
+test("font diagnostic detaches its owned session on every observation failure and refuses cleanup failures", async () => {
+  for (const failAt of ["snapshot", "session", "DOM.enable", "CSS.enable", "DOM.getDocument", "DOM.querySelector", "CSS.getPlatformFontsForNode", "CSS.getMatchedStylesForNode", undefined]) {
+    for (const failDetach of [false, true]) {
+      if (failAt === undefined && !failDetach) continue
+      const { page, events, operationError, detachError } = readOnlyPage(failAt, failDetach)
+      const failure = await collectMarketingFontDiagnostic(page, "574.856px").catch((error: unknown) => error)
+      expect(failure).toBeInstanceOf(AggregateError)
+      if (!(failure instanceof AggregateError)) throw new Error("Expected the diagnostic to fail")
+      const ownsSession = failAt !== "snapshot" && failAt !== "session"
+      expect(failure.errors).toEqual([...(failAt === undefined ? [] : [operationError]), ...(ownsSession && failDetach ? [detachError] : [])])
+      expect(events.filter(event => event === "detach")).toHaveLength(ownsSession ? 1 : 0)
     }
-    expect(events).toEqual(fail ? ["before-probe", "remove", "dispose", "detach"] : ["before-probe", "zero-load", "remove", "dispose", "detach"])
   }
 })
 
