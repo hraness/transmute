@@ -32,6 +32,7 @@ export {
   type HtmlOverlayRuntimeFrame,
   type HtmlOverlayTiming,
 } from "./contracts";
+export { HtmlSceneInputSchema, type HtmlSceneInput } from "./scene";
 export {
   HTML_OVERLAY_SCAFFOLD_CLOCK_INTEGRATIONS,
   HTML_OVERLAY_SCAFFOLD_KINDS,
@@ -96,3 +97,21 @@ export {
   type HtmlOverlayScaffoldInput,
   type ThreeReferenceScaffoldInput,
 } from "./scaffolds";
+export {
+  HtmlOverlayMusicTimingSchema,
+  htmlOverlayMusicPulse,
+  sampleHtmlOverlayMusicClock,
+  type HtmlOverlayMusicSample,
+  type HtmlOverlayMusicTiming,
+} from "./music-clock";
+export {
+  THREE_RIGGED_GLB_LIMITS,
+  THREE_RIGGED_GLB_PROFILE,
+  PreparedThreeRiggedGlb,
+  createThreeRiggedGlbModule,
+  prepareThreeRiggedGlb,
+  type ThreeRiggedGlbInspection,
+  type ThreeRiggedGlbPrepareOptions,
+  type ThreeRiggedGlbProvenance,
+  type ThreeRiggedGlbResource,
+} from "./rigged-glb";

@@ -14,6 +14,7 @@ These pages describe Slopcamera from current source. [Install that source](how-t
 - [Run current-source commands](how-to/use-current-source.md): build an exact checkout of Slopcamera.
 
 - [Edit and deliver video](how-to/edit-video.md): import footage, align related tracks, place overlays, and check a delivery.
+- [Make a music video from an HTML scene](how-to/music-video.md): render authored visuals with a local track and retain separate sources in an editable project.
 - [Generate images, video, or narration](how-to/generate-media.md): discover Gateway capabilities, acknowledge selected uploads, and retain the result.
 - [Direct short generated clips](directing-video.md): budget, review takes, preserve endpoint continuity, and recover uncertain work.
 - [Author a native film](studio.md): use Blender, CadQuery, or Manim; retain caches; share assets and calibrated cameras.

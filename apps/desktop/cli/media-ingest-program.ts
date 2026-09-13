@@ -67,7 +67,7 @@ function removeStagedImport(
   }));
 }
 
-function stageImport(projectDirectory: string, sourcePath: string): Program<StagedMediaImport> {
+function stageImport(projectDirectory: string, sourcePath: string, maximumBytes: number): Program<StagedMediaImport> {
   return Effect.gen(function*() {
     const platform = yield* MediaIngestPlatform;
     const source = yield* platform.sourcePath(sourcePath);
@@ -78,8 +78,8 @@ function stageImport(projectDirectory: string, sourcePath: string): Program<Stag
       if (before.isSymbolicLink() || !before.isFile()) {
         throw new CliError("unsafe-path", `Media source must be a physical regular file: ${sourcePath}`);
       }
-      if (before.size <= 0 || before.size > MAX_MEDIA_BYTES) {
-        throw new CliError("invalid-data", `Media source must contain 1 through ${MAX_MEDIA_BYTES} bytes.`);
+      if (before.size <= 0 || before.size > maximumBytes) {
+        throw new CliError("invalid-data", `Media source must contain 1 through ${maximumBytes} bytes.`);
       }
     });
     const imports = yield* privateImportsDirectory(projectDirectory);
@@ -178,6 +178,11 @@ function commitImport(imported: StagedMediaImport): Program<boolean> {
 export function ingestProjectMediaProgram(options: IngestProjectMediaOptions): Program<IngestedProjectMedia> {
   return Effect.gen(function*() {
     const platform = yield* MediaIngestPlatform;
+    const maximumBytes = yield* operationValidation("media", () => {
+      const bound = options.maximumBytes ?? MAX_MEDIA_BYTES;
+      if (!Number.isSafeInteger(bound) || bound < 1 || bound > MAX_MEDIA_BYTES) throw new CliError("invalid-data", "Invalid media import byte bound.");
+      return bound;
+    });
     const role = yield* operationValidation("media", () => ProjectAssetRoleSchema.parse(options.role));
     const [repositoryRoot, projectDirectory] = yield* Effect.all([
       platform.realpath(options.repositoryRoot), platform.realpath(options.projectDirectory),
@@ -186,7 +191,7 @@ export function ingestProjectMediaProgram(options: IngestProjectMediaOptions): P
     })));
     yield* platform.assertWithin(repositoryRoot, projectDirectory, "Project media import directory is outside the repository.");
     return yield* operationResource(
-      stageImport(projectDirectory, options.sourcePath),
+      stageImport(projectDirectory, options.sourcePath, maximumBytes),
       imported => Effect.gen(function*() {
         const probe = yield* probeProjectMediaProgram(options.ffprobe, options.runner, imported.temporaryPath);
         const location = yield* platform.assetLocation(repositoryRoot, imported.absolutePath, options.sourcePath);

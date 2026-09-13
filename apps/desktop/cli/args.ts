@@ -85,6 +85,7 @@ export type SpatialProjectCommand = JsonOption & {
 );
 
 export type CliCommand =
+  | { readonly kind: "html-render"; readonly input: string; readonly dryRun: boolean; readonly json: boolean }
   | StudioCommand
   | DirectingCommand
   | SpatialWorldCommand
@@ -3150,6 +3151,13 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   }
   const command = argv[0]!;
   switch (command) {
+    case "html": {
+      if (argv[1] !== "render") fail("Use html render --input <scene.json> [--dry-run] [--json].");
+      const parsed = parseOptions(argv.slice(2), { "--input": "value", "--dry-run": "flag", "--json": "flag" });
+      const input = optionString(parsed, "--input");
+      if (input === undefined || parsed.positionals.length !== 0) fail("Use html render --input <scene.json> [--dry-run] [--json].");
+      return { kind: "html-render", input, dryRun: optionFlag(parsed, "--dry-run"), json: optionFlag(parsed, "--json") };
+    }
     case "studio": return parseStudioArgs(argv.slice(1));
     case "direct": return parseDirectingArgs(argv.slice(1));
     case "scene": return parseSpatialSceneArgs(argv.slice(1));

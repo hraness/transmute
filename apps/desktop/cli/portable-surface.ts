@@ -214,6 +214,7 @@ export async function runPortableSurface(
 ): Promise<number | undefined> {
   const argv = canonicalizeUnifiedCliArgs(argvInput);
   if (argv[0] === "html") {
+    if (argv[1] === "render" || argv.includes("--help") || argv.includes("-h")) return undefined;
     if (argv[1] === "catalog") return runHtmlCatalog(argv, dependencies);
     return await runHtmlScaffold(argv, dependencies);
   }

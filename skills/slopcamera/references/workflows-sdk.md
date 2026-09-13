@@ -15,7 +15,7 @@ For custom local authoring, use `slopcamera code init workflow.ts`, inspect the 
 
 Discover exact local inputs with `slopcamera operations list|show`. No host accepts arbitrary new operation registration or caller-selected shell/argv. The fixed `slopcamera.studio.run` is an explicit exception for previously retained native source: its bundle/job input remains typed, while executable paths and trusted-current-user authority belong to the host invocation. The checked `examples/studio/native-workflow.ts` uses `defineWorkflow` and `StudioRunInputSchema` from the local entrypoint.
 
-`media.ingest` needs an existing ordinary project. There is no public arbitrary-file project bootstrap or SDK project-create operation. Follow [video projects](video-projects.md) for the supported recording/native/directing entry paths; never synthesize their receipts or depend on private constructors.
+`media.ingest` needs an existing ordinary project. There is no public generic arbitrary-file SDK project-create operation. Follow [video projects](video-projects.md) for the supported recording, native, and directing entry paths, or [music videos](music-video.md) for the current-source `html render` CLI that creates a project from an authored scene and optional soundtrack. Never synthesize their receipts or depend on private constructors.
 
 ## Inspect, approve and resume exact work
 

@@ -1,0 +1,16 @@
+{
+  "kind": "slopcamera.html-scene",
+  "schemaVersion": 1,
+  "name": "Island robot",
+  "document": { "path": "examples/html/music-video.html" },
+  "canvas": { "width": 1280, "height": 720, "deviceScaleFactor": 1 },
+  "timing": { "durationUs": 43204320, "fps": 30 },
+  "libraries": ["three"],
+  "seed": 8888,
+  "background": "#080b16",
+  "executionProfile": "three-webgl2-hardware-v1",
+  "parameters": {
+    "music": { "bpm": 88.88, "beatOffsetUs": 0, "beatsPerBar": 4 }
+  },
+  "resources": []
+}

@@ -161,6 +161,8 @@
     "docs/studio.md",
     "examples/studio/native-workflow.ts",
     "examples/studio/hybrid-scene.ts",
+    "examples/html/*.html",
+    "examples/html/*.json",
     "examples/studio/vgpu/heat-field.mjs",
     "apps/desktop/studio/assets/README.md",
     "!apps/desktop/cli/**/*.test.ts",

@@ -1,6 +1,6 @@
 ---
 name: slopcamera
-description: Create, inspect, edit and render visual media with the Slopcamera CLI and SDK. Use for diagrams, raster-to-SVG conversion, screen or camera recordings, video editing and captions, AI images/video/speech/transcription, Three.js scenes and world-space media, Blender rigs and simulation, CadQuery models, Manim educational films, HTML/WGSL motion graphics, and durable agent workflows.
+description: Create, inspect, edit and render visual media with the Slopcamera CLI and SDK. Use for diagrams, raster-to-SVG conversion, screen or camera recordings, video editing and captions, music videos from authored scenes and local tracks, AI images/video/speech/transcription, Three.js scenes and world-space media, Blender rigs and simulation, CadQuery models, Manim educational films, HTML/WGSL motion graphics, and durable agent workflows.
 ---
 
 # Create visual media with Slopcamera
@@ -21,6 +21,7 @@ Slopcamera installs from its verified release archive or from source. Historical
 | Custom diagram themes, fonts or icon packages | [Customization](references/customization.md) |
 | Raster artwork converted to SVG | [Vectorization](references/vectorization.md) |
 | Record, clean up, caption, frame or deliver video | [Video projects](references/video-projects.md) |
+| Music video, dancing mascot or timed HTML scene with a local soundtrack | [Music videos](references/music-video.md) |
 | Generate images, clips, narration or transcripts | [Gateway media](references/gateway-media.md) |
 | Budgeted short clips, reviewed takes and continuity | [Directing video](references/directing-video.md) |
 | Editable Three/Spark scene, saved world, named-part edits or shared camera | [Directed scenes](references/directed-scenes.md) |

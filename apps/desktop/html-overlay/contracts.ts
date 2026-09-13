@@ -304,6 +304,9 @@ export const HtmlOverlayAuthoringInputSchema = z.strictObject({
   seed: Uint32Schema,
   timing: HtmlOverlayTimingSchema,
 }).superRefine((input, context) => {
+  // Zod may run refinements after a numeric bound fails. Leave that issue in
+  // the parse result instead of throwing from the checked frame-count helper.
+  if (!HtmlOverlayTimingSchema.safeParse(input.timing).success) return;
   const frames = htmlOverlayFrameCount(input.timing);
   if (frames > HTML_OVERLAY_MAX_FRAMES) {
     context.addIssue({
