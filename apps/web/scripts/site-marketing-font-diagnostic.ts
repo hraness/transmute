@@ -14,8 +14,51 @@ interface FontMetricDiagnostic {
 interface PlatformFontDiagnostic { familyName: string; postScriptName: string; isCustomFont: boolean; glyphCount: number }
 export interface MarketingFontDiagnostic {
   kind: "marketing-font-diagnostic"; selector: string; capturedMaxWidth: string
+  beforeProbe: { maxWidth: string; fontSize: string; originNoteMatches: number }
+  matchedFontRules: { rules: string[]; truncated: boolean }
   before: FontMetricDiagnostic; after: FontMetricDiagnostic
   platformBefore: PlatformFontDiagnostic[]; platformAfter: PlatformFontDiagnostic[]
+}
+
+interface MatchedFontStyle { cssProperties: readonly { name: string; value: string; disabled?: boolean }[] }
+interface MatchedFontSource {
+  inlineStyle?: MatchedFontStyle
+  matchedCSSRules?: readonly { rule: { selectorList: { text: string }; style: MatchedFontStyle } }[]
+  inherited?: readonly { inlineStyle?: MatchedFontStyle; matchedCSSRules: readonly { rule: { selectorList: { text: string }; style: MatchedFontStyle } }[] }[]
+}
+/** At most eight compact rules, each <=224 encoded UTF-8 bytes, so both sides
+ * fit beside the already bounded font samples without emitting raw CSS. */
+export function selectMarketingFontRules(input: MatchedFontSource): { rules: string[]; truncated: boolean } {
+  const rules: string[] = []; let truncated = false
+  const select = (scope: string, selector: string, style: MatchedFontStyle) => {
+    const properties = style.cssProperties.slice(0, 128).filter(property => !property.disabled && /^(?:font(?:-[a-z-]+)?|max-width)$/u.test(property.name))
+    if (style.cssProperties.length > 128) truncated = true
+    if (properties.length === 0) return
+    if (rules.length === 8) { truncated = true; return }
+    // Size/cap declarations precede ancillary font settings in a truncated rule.
+    const priority = (name: string) => ["font-size", "max-width", "font", "font-family"].indexOf(name)
+    properties.sort((a, b) => (priority(a.name) < 0 ? 4 : priority(a.name)) - (priority(b.name) < 0 ? 4 : priority(b.name)))
+    if (properties.length > 4) truncated = true
+    if (selector.length > 128 || properties.slice(0, 4).some(property => property.name.length > 32 || property.value.length > 128)) truncated = true
+    const text = `${scope} ${selector.slice(0, 128)} {${properties.slice(0, 4).map(property => `${property.name.slice(0, 32)}:${property.value.slice(0, 128)}`).join(";")}}`
+      .replace(/[\x00-\x1f]/gu, " ")
+    let bounded = ""
+    for (const character of text) {
+      if (Buffer.byteLength(JSON.stringify(bounded + character), "utf8") > 224) { truncated = true; break }
+      bounded += character
+    }
+    rules.push(bounded)
+  }
+  const group = (scope: string, source: MatchedFontSource) => {
+    if (source.inlineStyle) select(scope, "<inline>", source.inlineStyle)
+    const matches = source.matchedCSSRules ?? []
+    if (matches.length > 64) truncated = true
+    for (const { rule } of matches.slice(0, 64)) select(scope, rule.selectorList.text, rule.style)
+  }
+  group("note", input)
+  if ((input.inherited?.length ?? 0) > 8) truncated = true
+  for (const [index, source] of (input.inherited ?? []).slice(0, 8).entries()) group(`ancestor${index + 1}`, source)
+  return { rules, truncated }
 }
 
 /** Diagnostic-only serialization; this cannot qualify or replace measured evidence. */
@@ -42,6 +85,12 @@ async function platformFonts(session: CDPSession): Promise<PlatformFontDiagnosti
  * diagnostic only and never changes target styles or the acceptance record. */
 export async function collectMarketingFontDiagnostic(page: Page, capturedMaxWidth: string): Promise<MarketingFontDiagnostic> {
   assert.ok(capturedMaxWidth.length > 0 && capturedMaxWidth.length <= 256)
+  const beforeProbe = await page.evaluate(selector => {
+    const note = document.querySelector(selector)
+    if (!(note instanceof HTMLElement)) throw new Error("Font diagnostic note missing")
+    const style = getComputedStyle(note)
+    return { maxWidth: style.maxWidth, fontSize: style.fontSize, originNoteMatches: document.querySelectorAll(".origin-note").length }
+  }, selector)
   const probe = await page.evaluateHandle(({ selector, fontProperties }) => {
     const note = document.querySelector(selector)
     if (!(note instanceof HTMLElement)) throw new Error("Font diagnostic note missing")
@@ -79,6 +128,10 @@ export async function collectMarketingFontDiagnostic(page: Page, capturedMaxWidt
         fontCount: faces.length, fontStatus: document.fonts.status, probe: { oneChPx, zeroTextPx, computedWidth: getComputedStyle(probe).width } }
     }, { selector, fontProperties })
     const before = await sample(), platformBefore = await platformFonts(session)
+    const documentNode = await session.send("DOM.getDocument", { depth: 0 })
+    const noteNode = await session.send("DOM.querySelector", { nodeId: documentNode.root.nodeId, selector })
+    assert.ok(noteNode.nodeId > 0)
+    const matchedFontRules = selectMarketingFontRules(await session.send("CSS.getMatchedStylesForNode", { nodeId: noteNode.nodeId }))
     await page.evaluate(async selector => {
       const note = document.querySelector(selector)
       if (!(note instanceof HTMLElement)) throw new Error("Font diagnostic note missing")
@@ -96,7 +149,7 @@ export async function collectMarketingFontDiagnostic(page: Page, capturedMaxWidt
       } finally { clearTimeout(timer) }
     }, selector)
     const after = await sample(), platformAfter = await platformFonts(session)
-    result = { kind: "marketing-font-diagnostic", selector, capturedMaxWidth, before, after, platformBefore, platformAfter }
+    result = { kind: "marketing-font-diagnostic", selector, capturedMaxWidth, beforeProbe, matchedFontRules, before, after, platformBefore, platformAfter }
     encodeMarketingFontDiagnostic(result)
   } catch (error) { failures.push(error) }
   finally {

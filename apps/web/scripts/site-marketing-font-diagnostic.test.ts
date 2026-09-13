@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import type { Page } from "playwright-core"
-import { collectMarketingFontDiagnostic, encodeMarketingFontDiagnostic } from "./site-marketing-font-diagnostic"
+import { collectMarketingFontDiagnostic, encodeMarketingFontDiagnostic, selectMarketingFontRules } from "./site-marketing-font-diagnostic"
 
 test("font diagnostic limits UTF-8 bytes rather than only character count", () => {
   expect(encodeMarketingFontDiagnostic({ measured: "62ch" })).toBe('{"measured":"62ch"}')
@@ -27,7 +27,7 @@ test("arbitrary Unicode diagnostics preserve exact JSON through the byte boundar
 test("font diagnostic preserves the prior measurement and always removes owned resources", async () => {
   for (const fail of [false, true]) {
     const events: string[] = [], failure = new Error("Platform font observation failed")
-    let samples = 0
+    let samples = 0, evaluations = 0
     const probe = { evaluate: () => {
       samples++
       if (samples > (fail ? 1 : 2)) { events.push("remove"); return Promise.resolve() }
@@ -42,14 +42,33 @@ test("font diagnostic preserves the prior measurement and always removes owned r
       }
       return {}
     }, detach: async () => { events.push("detach") } }
-    const page = { evaluateHandle: async () => probe, evaluate: async () => { events.push("zero-load") },
+    const page = { evaluateHandle: async () => probe, evaluate: async () => {
+      if (evaluations++ === 0) { events.push("before-probe"); return { maxWidth: "574.856px", fontSize: "14.72px", originNoteMatches: 0 } }
+      events.push("zero-load"); return undefined
+    },
       context: () => ({ newCDPSession: async () => session }) } as unknown as Page
     if (fail) await expect(collectMarketingFontDiagnostic(page, "original62ch")).rejects.toThrow("Font diagnostic")
     else {
       const result = await collectMarketingFontDiagnostic(page, "original62ch")
       expect(result.capturedMaxWidth).toBe("original62ch")
+      expect(result.beforeProbe).toEqual({ maxWidth: "574.856px", fontSize: "14.72px", originNoteMatches: 0 })
       expect(result.before.maxWidth).toBe("574.856px"); expect(result.after.maxWidth).toBe("556.71px")
     }
-    expect(events).toEqual(fail ? ["remove", "dispose", "detach"] : ["zero-load", "remove", "dispose", "detach"])
+    expect(events).toEqual(fail ? ["before-probe", "remove", "dispose", "detach"] : ["before-probe", "zero-load", "remove", "dispose", "detach"])
+  }
+})
+
+test("matched font diagnostics retain cap and size rules while refusing unrelated CSS and bounding arbitrary selectors", () => {
+  const rule = (text: string) => ({ rule: { selectorList: { text }, style: { cssProperties: [
+    { name: "color", value: "red" }, { name: "font-size", value: ".92rem" }, { name: "max-width", value: "62ch" },
+    { name: "font-size", value: ".95rem", disabled: true },
+  ] } } })
+  expect(selectMarketingFontRules({ matchedCSSRules: [rule(".install-note")] })).toEqual({ rules: ["note .install-note {font-size:.92rem;max-width:62ch}"], truncated: false })
+  expect(selectMarketingFontRules({ matchedCSSRules: [rule("a".repeat(129))] }).truncated).toBe(true)
+  for (let length = 0; length < 64; length++) {
+    const result = selectMarketingFontRules({ matchedCSSRules: Array.from({ length }, () => rule("📇\n".repeat(length + 1))) })
+    expect(result.rules.length).toBeLessThanOrEqual(8)
+    for (const value of result.rules) expect(Buffer.byteLength(JSON.stringify(value), "utf8")).toBeLessThanOrEqual(224)
+    if (length > 8) expect(result.truncated).toBe(true)
   }
 })

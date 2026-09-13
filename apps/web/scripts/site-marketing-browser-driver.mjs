@@ -56,7 +56,7 @@ async function main() {
         assert.ok(remaining > 0, "Shell matrix exceeded its absolute deadline")
         const negative = scenario.width === 1440 && scenario.theme === "system" && scenario.system === "light"
         let design, baselineDetails, currentDom, baselineDom, baselinePaint, currentFontDiagnostic, baselineFontDiagnostic
-        const fontDiagnostic = scenario.name === "/-769-dark-light"
+        const fontDiagnostic = scenario.route === "/" && scenario.width === 769
         const noteMaxWidth = elements => {
           const note = elements.find(item => item.key === ".hraness-marketing-install__heading-group > .install-note[0]")
           assert.ok(note !== undefined, "Original install-note measurement required")
@@ -86,7 +86,7 @@ async function main() {
           const bytes = encodeWorkerJson({ schemaVersion: 1, token: request.token, scope: marketingScope,
             scenario: scenario.name, diagnosticOnly: true, current: currentFontDiagnostic, baseline: baselineFontDiagnostic })
           assert.ok(bytes.byteLength <= 32 * 1024, "Bounded private font diagnostic")
-          await bounded(writeFile(join(dirname(requestPath), "site-marketing-font-diagnostic.json"), bytes, { flag: "wx", mode: 0o600 }),
+          await bounded(writeFile(join(dirname(requestPath), `site-marketing-font-diagnostic-${selectedCases.indexOf(scenario)}.json`), bytes, { flag: "wx", mode: 0o600 }),
             "Private font diagnostic retention", 5_000)
         }
         assert.ok(design !== undefined && baselineDetails !== undefined, "Current design observations missing")
