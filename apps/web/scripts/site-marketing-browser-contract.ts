@@ -100,8 +100,23 @@ export function parseMarketingCaseFailure(value: unknown, request: MarketingRequ
   return item
 }
 export function marketingCaseFailure(request: MarketingRequest, scenario: string, stage: string, comparedCases: readonly string[], error: unknown) {
+  // Put bounded leaf diagnostics first: String(AggregateError) otherwise hides
+  // the actual native assertion beneath pair and restoration wrappers.
+  const messages: string[] = [], ancestors = new Set<unknown>()
+  let remaining = 16
+  const visit = (value: unknown, depth: number) => {
+    if (remaining-- <= 0) return
+    if (ancestors.has(value)) { messages.push("Circular aggregate failure"); return }
+    if (value instanceof AggregateError && depth < 8) {
+      ancestors.add(value)
+      for (const child of value.errors.slice(0, 4)) visit(child, depth + 1)
+      ancestors.delete(value)
+    }
+    try { messages.push(String(value).slice(0, 2048)) } catch { messages.push("Unprintable failure") }
+  }
+  visit(error, 0)
   return parseMarketingCaseFailure({ schemaVersion: 1, scope: marketingScope, token: request.token, accepted: false, completed: false,
-    scenario, stage, comparedCases: [...comparedCases], error: String(error).replace(/[\x00-\x1f]/gu, " ").slice(0, 2048) || "Unknown failure" }, request)
+    scenario, stage, comparedCases: [...comparedCases], error: messages.join(" | ").replace(/[\x00-\x1f]/gu, " ").slice(0, 2048) || "Unknown failure" }, request)
 }
 export function headingSize(width: number, level: 1 | 2): number {
   return level === 1 ? Math.min(64, Math.max(44, width * .051)) : Math.min(52, Math.max(38.4, width * .04))

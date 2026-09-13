@@ -58,6 +58,28 @@ test("Lantern DOM normalization admits only the finite reviewed opt-in hooks", (
   expect(normalized).toContain('class="topbar xborder xbackground xbackdrop"')
   expect(() => normalizeMainOptIn(dom.replace("hraness-material-pane", "hraness-material-pane extra"))).toThrow()
 })
+test("nested native failure evidence retains the leaf assertion within the existing protocol bound", () => {
+  const leaf = new Error(".topbar[0] exact Lantern backdrop-filter: blur(20px) != none")
+  const error = new AggregateError([new AggregateError([leaf], "transparency restoration")], "current pair")
+  const failure = marketingCaseFailure(request(), marketingCases[0]!.name, "current", [], error)
+  expect(failure.error).toContain(leaf.message)
+  expect(failure.error).toContain("transparency restoration")
+  expect(parseMarketingCaseFailure(failure, request())).toEqual(failure)
+  const cycle = new AggregateError([], "cycle"); cycle.errors.push(cycle)
+  expect(String(marketingCaseFailure(request(), marketingCases[0]!.name, "current", [], cycle).error)).toContain("Circular aggregate failure")
+})
+test("nested native failure diagnostics stay finite and printable for bounded arbitrary trees", () => {
+  let state = 0x6572726f
+  const next = () => (state = (Math.imul(state, 1664525) + 1013904223) >>> 0)
+  for (let run = 0; run < 64; run++) {
+    let error: Error = new Error(Array.from({ length: next() % 4096 }, () => String.fromCharCode(next() % 128)).join(""))
+    for (let depth = next() % 12; depth > 0; depth--) error = new AggregateError([error, error], `depth ${depth}`)
+    const failure = marketingCaseFailure(request(), marketingCases[0]!.name, "current", [], error)
+    expect(typeof failure.error).toBe("string"); expect(String(failure.error).length).toBeGreaterThan(0)
+    expect(String(failure.error).length).toBeLessThanOrEqual(2048); expect(String(failure.error)).not.toMatch(/[\x00-\x1f]/u)
+    expect(parseMarketingCaseFailure(failure, request())).toEqual(failure)
+  }
+})
 test("Lantern wall normalization collapses only near-white serialization epsilon", () => {
   const expected = "linear-gradient(oklch(.999994 .0000497986 none / .16), oklch(.4 .1 none / .2))"
   const actual = "linear-gradient(oklch(1 5.96e-8 none / .16), oklch(.4 .1 none / .2))"

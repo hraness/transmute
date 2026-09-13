@@ -74,4 +74,20 @@ describe("Lantern material admission and scope", () => {
     expect(rules).toContain('.header{min-height:3.5rem}')
     expect(rules.join("\n")).not.toContain('!important')
   })
+
+  test("local chrome consumes canonical preference tokens without shadowing reduced transparency", async () => {
+    const [foundation, css, material] = await Promise.all([
+      read("src/site-foundation.css"), read("src/styles.css"), read("vendor/lantern-material/lantern-material.css"),
+    ])
+    // The released media rules must remain the only owners of these values.
+    for (const source of [foundation, css]) expect(source).not.toMatch(/--hraness-material-chrome-(?:paint|blur)\s*:/u)
+    expect(css).not.toContain("hraness-material-chrome")
+    const bridge = [...foundation.matchAll(/\.topbar\.hraness-material-chrome\s*\{([^}]+)\}/gu)]
+    expect(bridge).toHaveLength(1)
+    expect(bridge[0]![1]!.trim().split(/\s*;\s*/u).filter(Boolean)).toEqual([
+      "background-color: var(--hraness-material-chrome-paint)", "backdrop-filter: var(--hraness-material-chrome-blur)",
+    ])
+    expect(material).toContain('@media (prefers-reduced-transparency: reduce)')
+    expect(material).toContain('--hraness-material-chrome-paint: var(--surface, var(--ui-background, Canvas));\n      --hraness-material-chrome-blur: none;')
+  })
 })
