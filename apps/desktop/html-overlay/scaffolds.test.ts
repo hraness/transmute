@@ -1,4 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { createRequire } from "node:module";
+import { setImmediate } from "node:timers/promises";
+import { createContext, runInContext } from "node:vm";
+
+import { createHtmlOverlayRuntimeFrame } from "./contracts";
+import { createHtmlOverlayBrowserRuntimeSource } from "./runtime";
 
 import {
   HTML_OVERLAY_SCAFFOLD_KINDS,
@@ -120,7 +126,7 @@ describe("HTML overlay scaffolds", () => {
     expect(html).toContain("renderer.toneMapping = THREE.ACESFilmicToneMapping");
     expect(html).toContain('powerPreference: "high-performance"');
     expect(html).toContain("function createSubject()");
-    expect(html).toContain("renderer.compileAsync(scene, camera)");
+    expect(html).toContain("renderer.compile(scene, camera)");
     expect(html).toContain("renderer.render(scene, camera)");
     expect(html).toContain("const horizontalHalfFov = Math.atan(");
     expect(html).toContain("const fitHalfFov = Math.min(");
@@ -130,6 +136,69 @@ describe("HTML overlay scaffolds", () => {
     expect(html).toContain("const phase = progress * Math.PI * 2");
     expect(html).not.toContain("setAnimationLoop");
     expect(html).not.toContain("requestAnimationFrame(");
+  });
+
+  test("Three.js reaches frame zero while asynchronous shader preparation is still pending", async () => {
+    const three: unknown = createRequire(import.meta.url)("three");
+    if (three === null || typeof three !== "object") {
+      throw new Error("The locked Three.js module did not load.");
+    }
+    const events: string[] = [];
+    const compilation = Promise.withResolvers<void>();
+    class ControlledRenderer {
+      readonly shadowMap = {};
+      readonly info = { render: { calls: 0, triangles: 0 } };
+
+      setPixelRatio() {}
+      setSize() {}
+      setClearColor() {}
+
+      compile() {
+        events.push("compile");
+      }
+
+      compileAsync() {
+        this.compile();
+        return compilation.promise;
+      }
+
+      render() {
+        events.push("render");
+      }
+    }
+    const canvas = { deviceScaleFactor: 1, height: 360, width: 640 };
+    const timing = { durationUs: 2_000_000, fps: 30 };
+    const sandbox = createContext({
+      THREE: { ...three, WebGLRenderer: ControlledRenderer },
+      addEventListener() {},
+      devicePixelRatio: 1,
+      document: {
+        getAnimations: () => [],
+        querySelector: () => ({ addEventListener() {} }),
+      },
+    });
+    const host = runInContext(createHtmlOverlayBrowserRuntimeSource({
+      canvas,
+      parameters: {},
+      resources: [],
+      seed: 42,
+      timing,
+    }), sandbox) as { renderFrame(frame: unknown): Promise<void> };
+    const moduleSource = createHtmlOverlayScaffold("three")
+      .match(/<script type="module">([\s\S]*?)<\/script>/u)?.[1];
+    if (moduleSource === undefined) throw new Error("The Three.js scaffold has no module.");
+    runInContext(moduleSource.replace('import * as THREE from "three";', ""), sandbox);
+
+    const rendering = host.renderFrame(createHtmlOverlayRuntimeFrame(0, canvas, timing));
+    try {
+      // Yield one event-loop turn to drain frame microtasks while the controlled
+      // asynchronous compile remains unresolved. No GPU or wall-clock delay is used.
+      await setImmediate();
+      expect(events).toEqual(["compile", "render"]);
+    } finally {
+      compilation.resolve();
+      await rendering;
+    }
   });
 
   test("vgpu submits one prepared WebGPU pass from absolute Slopcamera time", () => {

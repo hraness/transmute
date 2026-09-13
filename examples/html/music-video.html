@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Island Pulse — procedural music video</title>
+    <style>
+      html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+      canvas { display: block; width: 100%; height: 100%; }
+    </style>
+  </head>
+  <body>
+    <canvas aria-label="An articulated island robot dancing above a transforming tropical coast"></canvas>
+    <script type="module">
+      import * as THREE from "three";
+
+      // Original articulated mascot and procedural scenery; no external assets.
+      // Bind the "three" library. Recommended canvas: 1280 × 720.
+      // Supply parameters.music to override this explicit example timing.
+      const music = Object.freeze({
+        bpm: 88.88,
+        beatOffsetUs: 0,
+        beatsPerBar: 4,
+        ...SlopcameraOverlay.parameters.music,
+      });
+      SlopcameraOverlay.musicClock(0, music);
+      const TAU = Math.PI * 2;
+      const mod = (value, divisor) => ((value % divisor) + divisor) % divisor;
+      const mix = THREE.MathUtils.lerp;
+      const smooth = (low, high, value) => THREE.MathUtils.smoothstep(value, low, high);
+      const random = (label) => SlopcameraOverlay.randomFor("island-pulse:" + label);
+      const resources = new Set();
+      const track = (resource) => { resources.add(resource); return resource; };
+      const canvas = document.querySelector("canvas");
+      const renderer = new THREE.WebGLRenderer({
+        canvas, alpha: true, antialias: true, premultipliedAlpha: false,
+        powerPreference: "high-performance",
+      });
+      renderer.setPixelRatio(devicePixelRatio);
+      renderer.setSize(SlopcameraOverlay.width, SlopcameraOverlay.height, false);
+      renderer.setClearColor(0x000000, 0);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
+      renderer.info.autoReset = false;
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(
+        42, SlopcameraOverlay.width / SlopcameraOverlay.height, 0.1, 180,
+      );
+      const ambient = new THREE.HemisphereLight(0xb3f4ed, 0x233341, 2.4);
+      const key = new THREE.DirectionalLight(0xffe7c0, 3.4);
+      key.position.set(4, 7, 5);
+      const rim = new THREE.DirectionalLight(0x62fff0, 3.2);
+      rim.position.set(-5, 4, -5);
+      scene.add(ambient, key, rim);
+
+      const sphere = track(new THREE.SphereGeometry(1, 24, 16));
+      const box = track(new THREE.BoxGeometry(1, 1, 1));
+      const cylinder = track(new THREE.CylinderGeometry(1, 1, 1, 24));
+      const material = (color, extra = {}) => track(new THREE.MeshStandardMaterial({
+        color, roughness: 0.54, metalness: 0.08, ...extra,
+      }));
+      const ceramic = material(0xf6e6c6);
+      const teal = material(0x177f87, { metalness: 0.28 });
+      const coral = material(0xf47762);
+      const ink = material(0x101e35, { roughness: 0.32 });
+      const mint = material(0x7affdf, { emissive: 0x35dbbd, emissiveIntensity: 1.1 });
+      const gold = material(0xeab956, { metalness: 0.5, roughness: 0.3 });
+      const mesh = (parent, geometry, surface, position, scale) => {
+        const object = new THREE.Mesh(geometry, surface);
+        object.position.set(...position);
+        object.scale.set(...scale);
+        parent.add(object);
+        return object;
+      };
+      const joint = (parent, name, position) => {
+        const object = new THREE.Group();
+        object.name = name;
+        object.position.set(...position);
+        parent.add(object);
+        return object;
+      };
+
+      // Named rigid joints make this mascot articulated, not a skinned asset.
+      const mascot = joint(scene, "mascot", [0, 0, 0]);
+      const hips = joint(mascot, "hips", [0, 1.15, 0]);
+      mesh(hips, sphere, teal, [0, 0, 0], [0.4, 0.25, 0.3]);
+      const torso = joint(hips, "torso", [0, 0.12, 0]);
+      mesh(torso, sphere, ceramic, [0, 0.32, 0], [0.56, 0.61, 0.36]);
+      mesh(torso, sphere, teal, [0, 0.29, 0.315], [0.28, 0.32, 0.095]);
+      const heart = mesh(torso, sphere, mint, [0, 0.35, 0.4], [0.09, 0.09, 0.035]);
+      const head = joint(torso, "head", [0, 0.96, 0]);
+      mesh(head, sphere, ceramic, [0, 0.13, 0], [0.58, 0.46, 0.43]);
+      mesh(head, sphere, ink, [0, 0.12, 0.342], [0.45, 0.255, 0.13]);
+      const eyes = [-1, 1].map(side => mesh(
+        head, sphere, mint, [side * 0.17, 0.16, 0.462], [0.055, 0.095, 0.023],
+      ));
+      mesh(head, sphere, coral, [0, -0.035, 0.451], [0.085, 0.022, 0.02]);
+      const antenna = joint(head, "antenna", [0, 0.54, 0]);
+      mesh(antenna, cylinder, gold, [0, 0.095, 0], [0.035, 0.19, 0.035]);
+      mesh(antenna, sphere, coral, [0, 0.23, 0], [0.105, 0.105, 0.105]);
+      const arms = [-1, 1].map(side => {
+        const shoulder = joint(torso, side < 0 ? "right-shoulder" : "left-shoulder", [side * 0.53, 0.57, 0]);
+        mesh(shoulder, sphere, coral, [0, 0, 0], [0.2, 0.2, 0.2]);
+        mesh(shoulder, sphere, teal, [0, -0.22, 0], [0.145, 0.27, 0.145]);
+        const elbow = joint(shoulder, side < 0 ? "right-elbow" : "left-elbow", [0, -0.43, 0]);
+        mesh(elbow, sphere, gold, [0, 0, 0], [0.14, 0.14, 0.14]);
+        mesh(elbow, sphere, ceramic, [0, -0.18, 0], [0.16, 0.235, 0.16]);
+        mesh(elbow, sphere, coral, [0, -0.4, 0.02], [0.2, 0.22, 0.19]);
+        return { side, shoulder, elbow };
+      });
+      const legs = [-1, 1].map(side => {
+        const thigh = joint(hips, side < 0 ? "right-thigh" : "left-thigh", [side * 0.265, -0.055, 0]);
+        mesh(thigh, sphere, teal, [0, -0.215, 0], [0.175, 0.29, 0.175]);
+        const knee = joint(thigh, side < 0 ? "right-knee" : "left-knee", [0, -0.46, 0]);
+        mesh(knee, sphere, coral, [0, 0, 0], [0.17, 0.17, 0.17]);
+        mesh(knee, sphere, ceramic, [0, -0.2, 0], [0.16, 0.26, 0.16]);
+        const foot = mesh(knee, sphere, ink, [0, -0.425, 0.12], [0.235, 0.15, 0.35]);
+        return { side, thigh, knee, foot };
+      });
+
+      const stage = mesh(scene, cylinder, material(0x163d49), [0, -0.08, 0], [2.12, 0.24, 2.12]);
+      stage.name = "floating-stage";
+      const ringGeometry = track(new THREE.TorusGeometry(1, 0.015, 8, 96));
+      const ringMaterial = material(0x54efd5, { emissive: 0x28cfae, emissiveIntensity: 1.1 });
+      const rings = [1.38, 1.72, 2.05].map(radius => {
+        const ring = mesh(scene, ringGeometry, ringMaterial, [0, 0.048, 0], [radius, radius, radius]);
+        ring.rotation.x = -Math.PI / 2;
+        return { ring, radius };
+      });
+
+      const landscape = { time: { value: 0 }, morph: { value: 0 }, night: { value: 0 } };
+      const landscapeFunctions = `
+        float terrainHeight(vec2 p, float morph) {
+          float inland = smoothstep(2.0, 8.0, -p.y);
+          float rolling = 0.65 + 0.3 * sin(p.x * 0.34 + p.y * 0.21)
+            + 0.24 * cos(p.x * 0.7 - p.y * 0.18);
+          float mountain = 0.7 + 2.9 * pow(0.5 + 0.5 * sin(p.x * 0.24 + p.y * 0.17), 3.0)
+            + 1.45 * pow(0.5 + 0.5 * cos(p.x * 0.46 - p.y * 0.28), 4.0);
+          return -0.5 + inland * mix(rolling, mountain, morph);
+        }
+      `;
+      const terrainHeight = (x, z, morph) => {
+        const rolling = 0.65 + 0.3 * Math.sin(x * 0.34 + z * 0.21)
+          + 0.24 * Math.cos(x * 0.7 - z * 0.18);
+        const mountain = 0.7 + 2.9 * (0.5 + 0.5 * Math.sin(x * 0.24 + z * 0.17)) ** 3
+          + 1.45 * (0.5 + 0.5 * Math.cos(x * 0.46 - z * 0.28)) ** 4;
+        return -0.5 + smooth(2, 8, -z) * mix(rolling, mountain, morph);
+      };
+      const terrainGeometry = track(new THREE.PlaneGeometry(56, 42, 100, 80));
+      terrainGeometry.rotateX(-Math.PI / 2);
+      terrainGeometry.translate(0, 0, -23);
+      const terrainMaterial = track(new THREE.ShaderMaterial({
+        uniforms: landscape,
+        vertexShader: `
+          uniform float morph;
+          varying vec3 worldPosition;
+          varying vec3 terrainNormal;
+          ${landscapeFunctions}
+          void main() {
+            vec3 p = position;
+            p.y = terrainHeight(p.xz, morph);
+            float dx = terrainHeight(p.xz + vec2(0.08, 0.0), morph) - p.y;
+            float dz = terrainHeight(p.xz + vec2(0.0, 0.08), morph) - p.y;
+            terrainNormal = normalize(vec3(-dx, 0.08, -dz));
+            worldPosition = p;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float morph;
+          uniform float night;
+          varying vec3 worldPosition;
+          varying vec3 terrainNormal;
+          void main() {
+            vec3 sand = vec3(0.48, 0.30, 0.15);
+            vec3 jungle = mix(vec3(0.065, 0.24, 0.12), vec3(0.018, 0.10, 0.10), night);
+            float coast = smoothstep(-0.25, 0.45, worldPosition.y);
+            vec3 color = mix(sand, jungle, coast);
+            color *= 0.62 + 0.58 * max(0.0, dot(terrainNormal, normalize(vec3(-0.4, 1.0, 0.5))));
+            color += 0.025 * sin(worldPosition.x * 1.7 + worldPosition.z * 2.1);
+            float mist = smoothstep(6.0, 48.0, -worldPosition.z) * 0.7;
+            color = mix(color, mix(vec3(0.24, 0.46, 0.43), vec3(0.025, 0.055, 0.12), night), mist);
+            gl_FragColor = vec4(color, 1.0);
+          }
+        `,
+      }));
+      scene.add(new THREE.Mesh(terrainGeometry, terrainMaterial));
+
+      const waterGeometry = track(new THREE.PlaneGeometry(160, 140, 72, 48));
+      waterGeometry.rotateX(-Math.PI / 2);
+      waterGeometry.translate(0, -0.5, -30);
+      const waterMaterial = track(new THREE.ShaderMaterial({
+        uniforms: landscape,
+        vertexShader: `
+          uniform float time;
+          varying vec3 waterPosition;
+          void main() {
+            vec3 p = position;
+            p.y += 0.045 * sin(p.x * 0.7 + time * 0.55)
+              + 0.035 * sin(p.z * 1.1 - time * 0.7);
+            waterPosition = p;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float time;
+          uniform float night;
+          varying vec3 waterPosition;
+          void main() {
+            vec2 p = waterPosition.xz;
+            float line = 0.5 + 0.5 * sin(p.y * 3.0 + sin(p.x * 0.8 + time * 0.3) - time * 0.85);
+            float glint = pow(line, 20.0) * (0.4 + 0.6 * pow(0.5 + 0.5 * sin(p.x * 2.0), 6.0));
+            vec3 base = mix(vec3(0.025, 0.27, 0.29), vec3(0.003, 0.028, 0.075), night);
+            vec3 color = base + glint * mix(vec3(0.12, 0.24, 0.18), vec3(0.015, 0.32, 0.29), night);
+            color = mix(color, mix(vec3(0.26, 0.41, 0.39), vec3(0.025, 0.055, 0.12), night), smoothstep(15.0, 75.0, -p.y));
+            gl_FragColor = vec4(color, 1.0);
+          }
+        `,
+      }));
+      scene.add(new THREE.Mesh(waterGeometry, waterMaterial));
+
+      const skyMaterial = track(new THREE.ShaderMaterial({
+        uniforms: landscape,
+        side: THREE.BackSide,
+        depthWrite: false,
+        vertexShader: `
+          varying vec3 skyDirection;
+          void main() {
+            skyDirection = position;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float night;
+          varying vec3 skyDirection;
+          void main() {
+            float height = smoothstep(-0.08, 0.62, normalize(skyDirection).y);
+            vec3 horizon = mix(vec3(0.80, 0.43, 0.29), vec3(0.065, 0.09, 0.19), night);
+            vec3 zenith = mix(vec3(0.07, 0.30, 0.39), vec3(0.003, 0.012, 0.047), night);
+            gl_FragColor = vec4(mix(horizon, zenith, height), 1.0);
+          }
+        `,
+      }));
+      mesh(scene, sphere, skyMaterial, [0, 0, 0], [90, 90, 90]);
+      const sun = mesh(scene, sphere, material(0xffd0a0, {
+        emissive: 0xffa169, emissiveIntensity: 0.65, roughness: 1,
+      }), [-8, 6.2, -22], [1.5, 1.5, 1.5]);
+
+      const dummy = new THREE.Object3D();
+      const palmCount = 18;
+      const trunkGeometry = track(new THREE.CylinderGeometry(0.06, 0.105, 1, 7));
+      const leafGeometry = track(new THREE.SphereGeometry(1, 8, 4));
+      const trunks = track(new THREE.InstancedMesh(trunkGeometry, material(0x755337), palmCount));
+      const leaves = track(new THREE.InstancedMesh(leafGeometry, material(0x289363), palmCount * 6));
+      trunks.frustumCulled = false;
+      leaves.frustumCulled = false;
+      scene.add(trunks, leaves);
+      const palms = Array.from({ length: palmCount }, (_, index) => {
+        const side = index % 2 === 0 ? -1 : 1;
+        return {
+          x: side * (3.3 + random("palm-x:" + index) * 9),
+          z: -4.8 - random("palm-z:" + index) * 17,
+          height: 1.6 + random("palm-height:" + index) * 1.5,
+          phase: random("palm-phase:" + index) * TAU,
+        };
+      });
+      const houseCount = 22;
+      const houses = track(new THREE.InstancedMesh(box, material(0xffffff), houseCount));
+      const roofs = track(new THREE.InstancedMesh(box, material(0xcc6a50), houseCount));
+      const windows = track(new THREE.InstancedMesh(box, material(0xffc979, {
+        emissive: 0xe99549, emissiveIntensity: 0.3,
+      }), houseCount * 2));
+      [houses, roofs, windows].forEach(object => { object.frustumCulled = false; scene.add(object); });
+      const houseColors = [0xd59778, 0x75b1a5, 0xe2c178, 0xc88499, 0xa0c5ce];
+      const town = Array.from({ length: houseCount }, (_, index) => {
+        houses.setColorAt(index, new THREE.Color(houseColors[index % houseColors.length]));
+        return {
+          x: (index - (houseCount - 1) / 2) * 0.87,
+          z: -8.7 - random("house-z:" + index) * 3.4,
+          height: 0.7 + random("house-height:" + index) * 1.0,
+          width: 0.6 + random("house-width:" + index) * 0.22,
+        };
+      });
+
+      const sparkPositions = [];
+      const sparkPhases = [];
+      for (let index = 0; index < 160; index += 1) {
+        sparkPositions.push(
+          (random("spark-x:" + index) - 0.5) * 28,
+          0.3 + random("spark-y:" + index) * 10,
+          -2.5 - random("spark-z:" + index) * 30,
+        );
+        sparkPhases.push(random("spark-phase:" + index) * TAU);
+      }
+      const sparkGeometry = track(new THREE.BufferGeometry());
+      sparkGeometry.setAttribute("position", new THREE.Float32BufferAttribute(sparkPositions, 3));
+      sparkGeometry.setAttribute("phase", new THREE.Float32BufferAttribute(sparkPhases, 1));
+      const sparkMaterial = track(new THREE.ShaderMaterial({
+        uniforms: { ...landscape, pixelRatio: { value: devicePixelRatio } },
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+        vertexShader: `
+          attribute float phase;
+          uniform float time;
+          uniform float pixelRatio;
+          varying float glow;
+          void main() {
+            vec3 p = position;
+            p.x += 0.35 * sin(time * 0.2 + phase);
+            p.y += 0.22 * sin(time * 0.38 + phase);
+            vec4 view = modelViewMatrix * vec4(p, 1.0);
+            gl_Position = projectionMatrix * view;
+            gl_PointSize = clamp(34.0 / -view.z, 1.2, 4.0) * pixelRatio;
+            glow = 0.6 + 0.4 * sin(time * 0.45 + phase);
+          }
+        `,
+        fragmentShader: `
+          uniform float night;
+          varying float glow;
+          void main() {
+            float alpha = 1.0 - smoothstep(0.08, 0.5, length(gl_PointCoord - 0.5));
+            gl_FragColor = vec4(vec3(0.24, 1.2, 0.88), alpha * glow * (0.12 + 0.65 * night));
+          }
+        `,
+      }));
+      scene.add(new THREE.Points(sparkGeometry, sparkMaterial));
+
+      // MSAA belongs on the render target as well as the presentation canvas.
+      // Bloom is localized to bright fragments; exposure never pulses to the beat.
+      const targetWidth = Math.round(SlopcameraOverlay.width * devicePixelRatio);
+      const targetHeight = Math.round(SlopcameraOverlay.height * devicePixelRatio);
+      const target = track(new THREE.WebGLRenderTarget(targetWidth, targetHeight, {
+        type: THREE.HalfFloatType,
+        samples: Math.min(4, renderer.capabilities.maxSamples),
+        depthBuffer: true,
+      }));
+      const postScene = new THREE.Scene();
+      const postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      const postMaterial = track(new THREE.ShaderMaterial({
+        depthTest: false, depthWrite: false,
+        uniforms: {
+          image: { value: target.texture },
+          texel: { value: new THREE.Vector2(1 / targetWidth, 1 / targetHeight) },
+        },
+        vertexShader: `
+          varying vec2 imageUv;
+          void main() { imageUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+        `,
+        fragmentShader: `
+          uniform sampler2D image;
+          uniform vec2 texel;
+          varying vec2 imageUv;
+          void main() {
+            vec4 source = texture2D(image, imageUv);
+            vec3 bloom = vec3(0.0);
+            for (int index = 0; index < 8; index++) {
+              float angle = float(index) * 0.7853981634;
+              vec2 direction = vec2(cos(angle), sin(angle)) * texel;
+              bloom += max(texture2D(image, imageUv + direction * 3.0).rgb - 1.1, 0.0);
+              bloom += 0.5 * max(texture2D(image, imageUv + direction * 8.0).rgb - 1.1, 0.0);
+            }
+            gl_FragColor = vec4(source.rgb + bloom * 0.016, source.a);
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment>
+          }
+        `,
+      }));
+      postScene.add(new THREE.Mesh(track(new THREE.PlaneGeometry(2, 2)), postMaterial));
+
+      function dancePose(style, beat) {
+        const step = Math.sin(Math.PI * beat);
+        const wave = Math.sin(Math.PI * beat * 0.5);
+        return [
+          [0.28 * step, 0.42, 0.42, 0.25, 0.25],
+          [0.18 * step, 1.9 + 0.3 * wave, 0.4, 0.7, 0.35],
+          [0.38 * wave, 1.15 + 0.25 * step, 1.15 - 0.25 * step, 0.9, 0.9],
+          [0.22 * step, 0.65, 1.9 - 0.3 * wave, 0.3, 0.7],
+        ][mod(style, 4)];
+      }
+
+      SlopcameraOverlay.onFrame(({ timeMs }) => {
+        const seconds = timeMs / 1000;
+        const clock = SlopcameraOverlay.musicClock(Math.round(timeMs * 1000), music);
+        const beat = clock.beatPosition;
+        const pulse = SlopcameraOverlay.musicPulse(clock.beatPhase, 0.7);
+        const phrase = Math.floor(beat / 16);
+        const phraseBlend = smooth(0.82, 1, mod(beat / 16, 1));
+        const poseA = dancePose(phrase, beat);
+        const poseB = dancePose(phrase + 1, beat);
+        const pose = poseA.map((value, index) => mix(value, poseB[index], phraseBlend));
+        const step = Math.sin(Math.PI * beat);
+        const lift = 0.07 * (1 - Math.cos(TAU * beat));
+        mascot.position.set(0.12 * step, 0, 0.035 * Math.sin(TAU * beat / 4));
+        mascot.rotation.set(0, 0.24 * Math.sin(TAU * beat / 8)
+          + TAU * smooth(12, 16, mod(beat, 32)), 0);
+        hips.rotation.set(0.05 * Math.cos(TAU * beat), pose[0], 0.075 * step);
+        torso.rotation.set(0.035 * Math.sin(TAU * beat), -pose[0] * 0.42, -0.1 * step);
+        head.rotation.set(0.07 * Math.sin(TAU * beat), -0.12 * step, 0.035 * step);
+        antenna.rotation.set(0.08 * Math.sin(TAU * beat - 0.5), 0, 0.16 * step);
+        for (const { side, shoulder, elbow } of arms) {
+          shoulder.rotation.set(0.25 * step * side, 0, side * pose[side > 0 ? 1 : 2]);
+          elbow.rotation.set(-pose[side > 0 ? 3 : 4] - 0.22 * Math.cos(Math.PI * beat + side), 0, side * 0.15);
+        }
+        for (const { side, thigh, knee, foot } of legs) {
+          thigh.rotation.set(side * step * 0.38, 0, side * 0.045);
+          knee.rotation.set(0.13 + 0.26 * Math.max(0, -side * step), 0, 0);
+          foot.rotation.set(-0.1 - 0.08 * Math.cos(Math.PI * beat + side), 0, 0);
+        }
+        // Recompute support from this pose, keeping the lowest ellipsoid shoe
+        // above the stage while retaining the beat's small airborne bounce.
+        mascot.updateMatrixWorld(true);
+        const lowestFoot = Math.min(...legs.map(({ foot }) => {
+          const matrix = foot.matrixWorld.elements;
+          return matrix[13] - Math.hypot(matrix[1], matrix[5], matrix[9]);
+        }));
+        mascot.position.y = 0.052 + lift - lowestFoot;
+        const blink = 1 - 0.85 * (1 - smooth(0, 0.11, Math.abs(mod(beat + 2, 12) - 6)));
+        eyes.forEach(eye => eye.scale.set(0.055, 0.095 * blink, 0.023));
+        heart.scale.setScalar(0.09 * (1 + 0.12 * pulse));
+        heart.scale.z = 0.035;
+        mint.emissiveIntensity = 0.9 + 0.35 * pulse;
+        ringMaterial.emissiveIntensity = 0.75 + 0.65 * pulse;
+        rings.forEach(({ ring, radius }, index) => {
+          const accent = SlopcameraOverlay.musicPulse(mod(clock.beatPhase - index * 0.1, 1), 0.7);
+          ring.scale.setScalar(radius * (1 + 0.014 * accent));
+        });
+
+        const journey = THREE.MathUtils.clamp(timeMs / SlopcameraOverlay.durationMs, 0, 1);
+        const morph = smooth(0.1, 0.72, journey);
+        const night = smooth(0.28, 0.97, journey);
+        landscape.time.value = seconds;
+        landscape.morph.value = morph;
+        landscape.night.value = night;
+        ambient.intensity = mix(2.4, 1.35, night);
+        key.intensity = mix(3.4, 2.2, night);
+        sun.position.set(-8 + 1.2 * journey, 6.2 - 4.8 * journey, -22);
+        sun.scale.setScalar(1.5 - 0.12 * journey);
+        windows.material.emissiveIntensity = 0.3 + night * 1.8;
+
+        palms.forEach(({ x, z, height, phase }, index) => {
+          const y = terrainHeight(x, z, morph);
+          const sway = 0.07 * Math.sin(seconds * 0.45 + phase);
+          const growth = 0.78 + morph * 0.4;
+          dummy.position.set(x, y + height * growth * 0.5, z);
+          dummy.rotation.set(0, 0, sway);
+          dummy.scale.set(1, height * growth, 1);
+          dummy.updateMatrix();
+          trunks.setMatrixAt(index, dummy.matrix);
+          for (let leaf = 0; leaf < 6; leaf += 1) {
+            const angle = leaf * TAU / 6 + phase;
+            dummy.position.set(x - Math.sin(sway) * height * growth * 0.5
+              + Math.sin(angle) * 0.36, y + height * growth, z + Math.cos(angle) * 0.36);
+            dummy.rotation.set(0.15 * Math.sin(angle), angle, -0.22 * Math.cos(angle) + sway);
+            dummy.scale.set(0.14, 0.065, 0.83 * growth);
+            dummy.updateMatrix();
+            leaves.setMatrixAt(index * 6 + leaf, dummy.matrix);
+          }
+        });
+        trunks.instanceMatrix.needsUpdate = true;
+        leaves.instanceMatrix.needsUpdate = true;
+        town.forEach(({ x, z, height, width }, index) => {
+          const y = terrainHeight(x, z, morph);
+          const h = height * (1 - morph * 0.28);
+          dummy.rotation.set(0, 0, 0);
+          dummy.position.set(x, y + h * 0.5, z);
+          dummy.scale.set(width, h, 0.75);
+          dummy.updateMatrix();
+          houses.setMatrixAt(index, dummy.matrix);
+          dummy.position.set(x, y + h + 0.06, z);
+          dummy.scale.set(width + 0.12, 0.12, 0.86);
+          dummy.updateMatrix();
+          roofs.setMatrixAt(index, dummy.matrix);
+          for (let window = 0; window < 2; window += 1) {
+            dummy.position.set(x + (window - 0.5) * width * 0.48, y + h * 0.58, z + 0.385);
+            dummy.scale.set(width * 0.17, Math.min(0.32, h * 0.3), 0.015);
+            dummy.updateMatrix();
+            windows.setMatrixAt(index * 2 + window, dummy.matrix);
+          }
+        });
+        [houses, roofs, windows].forEach(object => { object.instanceMatrix.needsUpdate = true; });
+
+        const barPosition = clock.barIndex + clock.barPhase;
+        camera.position.set(
+          0.7 + 1.15 * Math.sin(TAU * barPosition / 16),
+          2.9 + 0.12 * Math.sin(TAU * barPosition / 12),
+          8.1 + 0.22 * Math.cos(TAU * barPosition / 16),
+        );
+        camera.lookAt(0, 1.3, -0.6);
+        renderer.info.reset();
+        renderer.setRenderTarget(target);
+        renderer.render(scene, camera);
+        renderer.setRenderTarget(null);
+        renderer.render(postScene, postCamera);
+        if (renderer.info.render.calls > 96 || renderer.info.render.triangles > 150_000) {
+          throw new Error("The music-video example exceeded its draw-call or triangle budget.");
+        }
+      });
+
+      renderer.setRenderTarget(target);
+      renderer.compile(scene, camera);
+      renderer.setRenderTarget(null);
+      renderer.compile(postScene, postCamera);
+      canvas.addEventListener("webglcontextlost", event => {
+        event.preventDefault();
+        throw new Error("The music-video rendering context was lost.");
+      });
+      addEventListener("pagehide", () => {
+        for (const resource of resources) resource.dispose();
+        renderer.dispose();
+        renderer.forceContextLoss();
+      }, { once: true });
+    </script>
+  </body>
+</html>

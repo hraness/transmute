@@ -531,7 +531,8 @@ const THREE_SCAFFOLD = documentShell(
         event.preventDefault();
         throw new Error("The Three.js rendering context was lost.");
       });
-      SlopcameraOverlay.ready(renderer.compileAsync(scene, camera));
+      // Prepare shaders without making frame zero await asynchronous polling.
+      renderer.compile(scene, camera);
 
       SlopcameraOverlay.onFrame(({ progress }) => {
         const phase = progress * Math.PI * 2;

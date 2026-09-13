@@ -125,6 +125,9 @@ export function commandHostResourceClaims(
   coordinator: HostResourceCoordinator,
 ): readonly HostResourceClaim[] {
   switch (command.kind) {
+    case "html-render": return command.dryRun
+      ? claims(coordinator, ["cpu", "local-io"])
+      : claims(coordinator, ["cpu", "local-io", "browser", "ffmpeg", "output-publication", "project-render"]);
     case "align-analyze":
     case "analyze-inactivity":
     case "analyze-music":

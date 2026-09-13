@@ -278,6 +278,8 @@ function importedStreamRole(
 }
 
 export interface IngestProjectMediaOptions {
+  /** A caller may narrow the import bound; it cannot expand the host limit. */
+  readonly maximumBytes?: number;
   /** @internal Injectable durability boundary for focused fault and ordering tests. */
   readonly durability?: MediaIngestDurability;
   readonly ffprobe: string;

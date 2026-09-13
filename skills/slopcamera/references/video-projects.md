@@ -35,7 +35,7 @@ Use `slopcamera inspect <recording> --json` for a recording bundle and
 placements, synchronization, analyses, and current edit state from those
 results. Never guess them.
 
-Check the bootstrap before promising a file-only edit. There is no public empty-project or arbitrary-media project creator: `projects create` requires a real stopped Slopcamera recording, and `project add` / SDK `media.ingest` require an existing project. Current-source `studio assemble` creates one from a real successful native sequence; `direct assemble` uses accepted generated takes. Neither is a generic file import. Do not fabricate recording manifests or receipts, run paid generation to obtain an empty project, or hand-edit private state. If the request permits, use a standalone spatial scene for visuals and disclose any separate local audio/editor step; otherwise report the missing project bootstrap precisely.
+Check the bootstrap before promising a file-only edit. `projects create` requires a real stopped Slopcamera recording, and `project add` / SDK `media.ingest` require an existing project. Current-source `studio assemble` creates one from a real successful native sequence; `direct assemble` uses accepted generated takes. Current-source `html render` renders an authored HTML scene with an optional local soundtrack and creates an ordinary project containing separate scene and music sources. Follow [music videos](music-video.md) for that entry path and check `slopcamera help html` for availability. Arbitrary media files alone still have no empty-project creator. Do not fabricate recording manifests or receipts, run paid generation to obtain an empty project, or hand-edit private state.
 
 If the work begins with a new Slopcamera recording, create the project from that
 recording, then add any independent footage or audio:
@@ -88,7 +88,7 @@ project or its editable scene source, then inspect the resulting project hash.
 When an edit depends on evidence, use the evidence identifier returned by its
 analysis rather than recomputing or approximating it.
 
-Direct `project edit` does not accept HTML or arbitrary audio/color filters. Render HTML/Canvas/Three/WGSL through the local workflow `media.htmlOverlay` operation, then use its returned video as a project layer. `media audio` and `media color` produce separate controlled derivatives.
+Direct `project edit` does not accept HTML or arbitrary audio/color filters. Render HTML/Canvas/Three/WGSL through the local workflow `media.htmlOverlay` operation, then use its returned video as a project layer. For a complete authored scene that creates its own ordinary project, use `slopcamera html render --input <scene.json>` as described in [music videos](music-video.md). `media audio` and `media color` produce separate controlled derivatives.
 
 Overlay `--position x,y` is an offset from its selected anchor. Use `--anchor center --position 0,0` to center a layer, or `--anchor top-left --position 42,70` for an actual top-left pixel position. A full-frame overlay uses top-left at `0,0`. Do not add half the canvas dimensions to center offsets.
 
@@ -113,6 +113,10 @@ Two.js on its explicit WebGL renderer with `autostart: false` and one manual
 `render()`. Derive all visible state from the absolute Slopcamera frame and
 `SlopcameraOverlay.randomFor`; never add a CDN, live input, ambient asset loader, or
 second frame loop.
+
+For musical choreography, derive poses from `SlopcameraOverlay.musicClock` and
+local accents from `SlopcameraOverlay.musicPulse`. Follow [music videos](music-video.md)
+for explicit tempo, beat offset, duration, and soundtrack export.
 
 ## Use vgpu for explicit WebGPU effects
 

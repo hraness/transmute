@@ -448,7 +448,7 @@
   },
   {
     "identityLineCount": 22,
-    "identityLinesSha256": "eaa7ccd8f0827d2899b5e3f8133f2ca538398e433cb0f77ac13f86da704f412b",
+    "identityLinesSha256": "b76e2d280a51f37b3789a18db17dbf4c11d31473fd4912bfa4af7fa6b93de1bb",
     "occurrenceCount": 31,
     "path": "apps/desktop/cli/help.ts",
     "categories": [
@@ -457,7 +457,7 @@
   },
   {
     "identityLineCount": 1,
-    "identityLinesSha256": "59dd376e529c4d9cd2415c80041800ec0ca8d78296d2ed1a212a5d937e5ad000",
+    "identityLinesSha256": "2c06a61a54b0917605f28c9529c6b8c4eba62d05f8072dcd7235f93991c8ef37",
     "occurrenceCount": 1,
     "path": "apps/desktop/cli/main.ts",
     "categories": [
@@ -1268,7 +1268,7 @@
   },
   {
     "identityLineCount": 83,
-    "identityLinesSha256": "2f28d9a6bfbfb4643903d6d0e5a0cbc45c99d7e9488f06990f681530bd0c7772",
+    "identityLinesSha256": "bb95e469186bb45359559b208b42b0fdecf86ce84438f174205c0d73a058acf3",
     "occurrenceCount": 443,
     "path": "apps/desktop/dist/cli/main.js",
     "categories": [
@@ -1558,7 +1558,7 @@
   },
   {
     "identityLineCount": 2,
-    "identityLinesSha256": "0bce46cac75165849f88b77fc2c5c7954c38f06d145266bbfe6c54308133f6eb",
+    "identityLinesSha256": "d4a6e14a1774dac63fdc892d378eb99c490af1aaab9685257506d019669d121d",
     "occurrenceCount": 2,
     "path": "docs/how-to/edit-video.md",
     "categories": [
@@ -1612,7 +1612,7 @@
   },
   {
     "identityLineCount": 7,
-    "identityLinesSha256": "1af1e3a9a5c522937a00892489cdfacfda1b974f0400236dc4922e9d5cad938c",
+    "identityLinesSha256": "a94db3ac76b874e876ac419f5abee7cbbb6eed11a2dc68e27f361955c1a9a745",
     "occurrenceCount": 8,
     "path": "docs/reference/capabilities.md",
     "categories": [
@@ -1621,7 +1621,7 @@
   },
   {
     "identityLineCount": 12,
-    "identityLinesSha256": "455ac25688aa79eb475e00b57c823d19b722b88c866a6d4c93f7f74f3561ce22",
+    "identityLinesSha256": "4d365961f6175db811e93f3d15389f7d7a27dc92697c8af98c185938eb8c310e",
     "occurrenceCount": 12,
     "path": "docs/reference/sdk.md",
     "categories": [
@@ -1810,7 +1810,7 @@
   },
   {
     "identityLineCount": 18,
-    "identityLinesSha256": "2e427c85a5871890044586c3fded2a0cf1d4c209d9fc425d3f088177e76110e2",
+    "identityLinesSha256": "70b543f43bd2a05400b52471a2695c183947f5a4351fa9e1e833b7a3f535a393",
     "occurrenceCount": 18,
     "path": "scripts/package-smoke.ts",
     "categories": [
@@ -1855,7 +1855,7 @@
   },
   {
     "identityLineCount": 1,
-    "identityLinesSha256": "c39f0e2d24a14f468ae1de87b9a8b6833029ed04dd6fa3cd50c333bbf9015028",
+    "identityLinesSha256": "3a448fc2dd66943323deb6d2a440819e37b5539a509c1c341284749ea14f872e",
     "occurrenceCount": 1,
     "path": "skills/slopcamera/references/video-projects.md",
     "categories": [

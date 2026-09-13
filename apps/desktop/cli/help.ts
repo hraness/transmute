@@ -17,7 +17,7 @@ Commands:
   studio init|bundle|plan|probe|run|encode|asset|assemble|inspect|reconcile
                                  Author and render retained Blender, CAD and Manim productions
   image vectorize|generate      Create a local SVG or generated image file
-  html catalog|scaffold          Inspect or create a transparent HTML overlay starter
+  html catalog|scaffold|render   Author HTML scenes and export video with local audio
   workflows list|show|plan|run   Plan or run a reviewed reusable workflow
   code init|check|plan|run       Author, preflight, and run trusted TypeScript workflows
   runs list|show|resume|approve|cancel
@@ -162,12 +162,21 @@ content-addressed \`ai image generate\` lane and returns project-composable cont
   html: `Usage:
   slopcamera html catalog [--json]
   slopcamera html scaffold <${HTML_OVERLAY_SCAFFOLD_KIND_HELP}> --output <file.html>
+  slopcamera html render --input <scene.json> [--dry-run] [--json]
 
 Catalog lists the closed scaffold profiles in stable order with their primary jobs, render
 substrates, and current exact browser-library versions. Scaffold creates a complete transparent
 HTML overlay without overwriting an existing file. Scaffolds use the existing
 @hraness/slopcamera/local/html-overlay API and exact locked import maps. Render the document through
-workflow.media.htmlOverlay to receive a deterministic transparent video layer.`,
+workflow.media.htmlOverlay to receive a deterministic transparent video layer.
+
+Render accepts a slopcamera.html-scene source, retains its HTML, declared resources and
+optional local soundtrack, and returns an H.264/AAC MP4 plus an ordinary editable project
+with separate scene-video and original-audio tracks. Device dimensions must be even integers.
+Duration rounds up to whole frames; audio starts at zero and is trimmed or padded to that
+duration. Soundtracks encode as 48 kHz stereo AAC at 320 kb/s. Dry run checks source and
+workload bounds without launching a browser, importing audio, or writing project state.
+Progress uses stderr; --json keeps stdout machine-readable.`,
   operations: `Usage:
   slopcamera operations list [--json]
   slopcamera operations show <kind>[@<version>] [--json]
@@ -472,10 +481,11 @@ export function commandHelp(topic: readonly string[]): string {
 
 export function completions(words: readonly string[]): readonly string[] {
   const topLevel = [
-    "operations", "diagram", "direct", "studio", "image", "workflows", "code", "runs", "doctor", "ai", "media", "record", "recordings", "projects", "project", "inspect", "events", "edit", "analyze", "align", "faces", "fillers", "render", "assets",
+    "operations", "diagram", "direct", "studio", "image", "html", "workflows", "code", "runs", "doctor", "ai", "media", "record", "recordings", "projects", "project", "inspect", "events", "edit", "analyze", "align", "faces", "fillers", "render", "assets",
   ];
   if (words.length <= 1) return topLevel;
   const command = words[0];
+  if (command === "html") return ["catalog", "scaffold", "render"];
   if (command === "direct") return ["init", "anchor", "plan", "start", "inspect", "revise", "generate", "resume", "review", "assemble", "cleanup"];
   if (command === "studio") return words[2] === "assets" || words[1] === "assets" ? ["search", "describe", "plan", "import"] : ["init", "bundle", "plan", "probe", "run", "encode", "asset", "assemble", "inspect", "reconcile", "assets"];
   if (command === "operations") return ["list", "show"];

@@ -10,6 +10,7 @@ import {
 } from "./contracts";
 import { htmlOverlayAssetLocalUrl } from "./libraries";
 import { HTML_OVERLAY_RANDOM_ALGORITHM } from "./random";
+import { createHtmlOverlayMusicClockRuntimeSource } from "./music-clock";
 
 const Uint32Schema = z.number().int().safe().min(0).max(0xffff_ffff);
 
@@ -711,6 +712,7 @@ export function createHtmlOverlayBrowserRuntimeSource(
         if (index >= 0) callbacks.splice(index, 1);
       };
     },
+    ...${createHtmlOverlayMusicClockRuntimeSource()},
     parameters: deepFreeze(config.parameters),
     random,
     randomFor,

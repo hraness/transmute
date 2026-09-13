@@ -133,6 +133,7 @@ import { resolveEmojiAsset, searchEmojiAssets, inspectEmojiAssets } from "./emoj
 import { asCliError, CliError, EXIT_CODE } from "./errors";
 import { commandHelp, completions } from "./help";
 import { PlaywrightHtmlOverlayRenderer } from "./html-overlay-renderer";
+import { executeHtmlSceneCommand } from "./html-scene";
 import { BunProcessRunner, processIo, writeJson, writeLine, type CliIo, type ProcessRunner } from "./io";
 import {
   codePreparationHostResourceClaims,
@@ -5761,6 +5762,13 @@ async function handleMediaColor(
 
 async function dispatch(context: CommandContext, command: CliCommand): Promise<void> {
   switch (command.kind) {
+    case "html-render": {
+      const output = await executeHtmlSceneCommand(applicationContext(context), command,
+        context.abortSignal ?? new AbortController().signal,
+        { progress: stage => context.io.stderr(`HTML scene: ${stage}\n`) });
+      writeValue(context.io, command.json, output, () => JSON.stringify(output, null, 2));
+      return;
+    }
     case "studio": {
       const output = await executeStudioCommand(applicationContext(context), command, context.abortSignal ?? new AbortController().signal);
       writeValue(context.io, command.json, output, () => JSON.stringify(output, null, 2));
@@ -6581,6 +6589,7 @@ type MutationReference =
 
 function commandMutationReference(command: CliCommand): MutationReference | undefined {
   switch (command.kind) {
+    case "html-render": return undefined; // A fresh retained attempt owns its publication lease.
     case "studio": return undefined; // Native jobs and the machine custody marker own explicit leases.
     case "directing": return undefined; // The directing store owns its explicit lease.
     case "spatial-world": return undefined; // Immutable world attempts and imports own their publication custody.

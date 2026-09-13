@@ -1,6 +1,6 @@
 # Edit and deliver video
 
-Use the ordinary media project when you need to revise footage, audio, cuts, camera framing, overlays or delivery variants. This guide assumes you have a recording, an existing project, or a retained clip from studio/directing assembly. See [capabilities and installation](../reference/capabilities.md) for the available host.
+Use the ordinary media project when you need to revise footage, audio, cuts, camera framing, overlays or delivery variants. This guide assumes you have a recording, an existing project, a retained clip from studio/directing assembly, or an authored HTML scene. See [capabilities and installation](../reference/capabilities.md) for the available host.
 
 ## Inspect the source and project
 
@@ -17,9 +17,11 @@ Use `slopcamera inspect <recording-id> --json` for a recording bundle. If a new 
 slopcamera projects create --from-recording <recording-id> --name "Product demonstration" --json
 ```
 
-`projects create` is recording-based; it does not accept an invented `--from-video` flag. Current-source `studio assemble` and `direct assemble` also create ordinary projects. Retain the project ID they return.
+`projects create` is recording-based; it does not accept an invented `--from-video` flag. Current-source `studio assemble`, `direct assemble`, and `html render` also create ordinary projects. Retain the project ID they return.
 
-If you have only independent media files and no project, there is currently no public empty-project or arbitrary-file bootstrap command. `project add` and the SDK’s `media.ingest` both need an existing project. Do not manufacture a recording, native receipt or generated take to get past that boundary. A standalone scene can render visual assets without a media project; an external editor or explicit local audio mux remains a separate workflow, not a Slopcamera project import.
+For authored visuals and a local soundtrack, [render an HTML music scene](music-video.md). `slopcamera html render --input <scene.json>` retains the document, renders the scene, and creates a project with the scene video and original audio as separate sources. It requires an explicit duration and does not infer tempo from the audio.
+
+`project add` and the SDK’s `media.ingest` still need an existing project. A collection of arbitrary media files alone does not create an empty project. Do not manufacture a recording, native receipt, or generated take to cross that boundary.
 
 ## Add and time the selected media
 
@@ -57,7 +59,7 @@ slopcamera project edit <project-id> overlay add --kind image --source caption.p
 
 To center an overlay, use `--anchor center --position 0,0`. A full-frame still uses a top-left anchor at `0,0` and the output dimensions. Inspect the returned edit and actual frames, especially where the overlay enters or leaves.
 
-The direct overlay grammar accepts image, SVG, GIF, video and checked emoji sources. For HTML, Three or WGSL graphics, render a reviewed document through the local `media.htmlOverlay` workflow operation, then use the returned video layer. [The HTML guide](../html-overlay-creative-toolkit.md) explains the available authoring profiles.
+The direct overlay grammar accepts image, SVG, GIF, video and checked emoji sources. For an HTML, Three or WGSL layer in an existing project, render a reviewed document through the local `media.htmlOverlay` workflow operation, then use the returned video layer. Use `html render` for a complete authored scene with its own new project. [The HTML guide](../html-overlay-creative-toolkit.md) explains the available authoring profiles.
 
 ## Render and inspect the delivery
 

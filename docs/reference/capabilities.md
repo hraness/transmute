@@ -30,6 +30,7 @@ Use the Slopcamera release installation or a source build for the commands below
 | Built-in workflow input schema | `slopcamera workflows list --json`, `slopcamera workflows show <id> --json` |
 | Live Gateway model capabilities | `slopcamera ai models list --type <type> --json`, `slopcamera ai models show <id> --json` |
 | HTML profile locks | `slopcamera html catalog --json` |
+| Current-source HTML scene export | `slopcamera help html`, `slopcamera html render --input <scene.json> --dry-run --json` |
 | Version-matched packaged agent instructions | `slopcamera skill path` |
 
 The portable `code search/execute` and MCP surface has four operations: diagram check, diagram render, image generation, and vectorization. The complete local host has a larger closed registry. Neither surface allows a caller to register arbitrary operations. See [SDK surfaces](sdk.md).
@@ -53,7 +54,9 @@ Native studio qualification used Blender 5.2.1 LTS, CadQuery 2.8.0 and Manim Com
 
 The copied macOS executable supports direct studio commands with embedded starters and drivers. Local Code Mode workflows still require the source-backed Bun distribution for their build-identity scan. A desktop UI, a copied binary, and the Bun package are not interchangeable installation prerequisites.
 
-Ordinary media import requires an existing project. Creation currently starts from a stopped recording or a successful studio/directing assembly; arbitrary standalone files cannot directly bootstrap an empty project through the public CLI or SDK. [Video editing](../how-to/edit-video.md#inspect-the-source-and-project) explains this boundary.
+Ordinary `project add` and SDK `media.ingest` imports require an existing project. Creation starts from a stopped recording, a successful studio/directing assembly, or, in current source, an authored scene rendered with `html render`. The scene command accepts an optional explicit local soundtrack and retains the scene video and original music as separate sources. Arbitrary standalone files alone cannot create an empty project. [Video editing](../how-to/edit-video.md#inspect-the-source-and-project) explains these entry paths.
+
+Current-source `html render` exports H.264 video with optional 48 kHz stereo AAC at 320 kb/s and retains a lossless RGB scene intermediate. Duration is explicit and rounds up to whole frames; the audio is trimmed or padded to fit. The music-clock helpers use declared constant tempo and offset, without detecting either from audio. Follow [the music-video guide](../how-to/music-video.md), and inspect `slopcamera help html` before assuming an installed version includes this command.
 
 ## Commands that can cross the network boundary
 
