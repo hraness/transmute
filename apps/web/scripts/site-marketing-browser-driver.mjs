@@ -52,7 +52,7 @@ async function main() {
     for (const scenario of selectedCases) {
       let stage = "pair"
       let currentFontDiagnostic, baselineFontDiagnostic
-      const fontDiagnostic = scenario.route === "/" && scenario.width === 769
+      const fontDiagnostic = scenario.route === "/"
       try {
         const remaining = selectedDeadline - (performance.now() - started)
         assert.ok(remaining > 0, "Shell matrix exceeded its absolute deadline")
