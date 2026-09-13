@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test"
+import { runInNewContext } from "node:vm"
 import type { WebSocketRoute } from "playwright-core"
 import { assertShellFocusFragments, assertShellFocusUnchanged, assertShellNode, assertShellSkipReveal, assertShellSystemPaintChanged, compareShellElements, compareShellEvidence, compareShellFocusedSkip, denyShellWebSocket, observeShellFocus, parseShellCaseFailure, parseShellPhase, parseShellRequest, recordShellFocusedSkip,
-  resolvedShellTheme, settleShellAppearancePaint, settleShellFocusState, settleShellSystemPaint, ShellPairFailure, settleShellPair, shellAppearanceSteps, shellCaseFailure, shellContextLifecycle, shellFocusFragments, shellOperationTracker, shellResource, siteShellBaselineRevision, siteShellBaselineTree, siteShellCases, siteShellHeaders, withShellCaseCleanup, withShellSettledNavigation,
+  resolvedShellTheme, settle, settleShellRestoredStyles, settleShellAppearancePaint, settleShellFocusState, settleShellSystemPaint, ShellPairFailure, settleShellPair, shellAppearanceSteps, shellCaseFailure, shellContextLifecycle, shellFocusFragments, shellOperationTracker, shellResource, siteShellBaselineRevision, siteShellBaselineTree, siteShellCases, siteShellHeaders, withShellCaseCleanup, withShellSettledNavigation,
   type ShellCase, type ShellElement, type ShellEvidence, type ShellRequest } from "./site-shell-browser-contract"
 
 function operationDeferred() {
@@ -9,6 +10,135 @@ function operationDeferred() {
   const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no })
   return { promise, resolve, reject }
 }
+
+function restorationFixture(recovery = false) {
+  let now = 0, id = 0, discovered = false, running = true, paint = "0px", frameTime = 0
+  const frames = new Map<number, (time: number) => void>(), timers = new Map<number, () => void>(), events = new Map<string, () => void>()
+  const href = "http://127.0.0.1:1/assets/site.css", selected = new Map<string, object[]>()
+  const view = { performance: { now: () => now }, scrollY: 0,
+    getComputedStyle: () => ({ getPropertyValue: () => paint }),
+    requestAnimationFrame: (callback: (time: number) => void) => { frames.set(++id, callback); return id },
+    cancelAnimationFrame: (key: number) => { frames.delete(key) },
+    setTimeout: (callback: () => void) => { timers.set(++id, callback); return id },
+    clearTimeout: (key: number) => { timers.delete(key) },
+    addEventListener: (name: string, callback: () => void) => { events.set(name, callback) },
+    removeEventListener: (name: string) => { events.delete(name) },
+  }
+  const document = { defaultView: view, styleSheets: [] as object[],
+    querySelectorAll: (selector: string) => selected.get(selector) ?? [],
+    querySelector: (selector: string) => selected.get(selector)?.[0] ?? null,
+    fonts: { ready: Promise.resolve(), load: async () => [{ status: "loaded" }] },
+  }
+  class Link { ownerDocument = document; isConnected = true; disabled = false; href = href; sheet?: object }
+  const link = new Link()
+  class Sheet { ownerNode = link; href = href; disabled = false }
+  const sheet = new Sheet(); link.sheet = sheet; document.styleSheets.push(sheet)
+  const owners = [".topbar", ".wordmark", ...(recovery ? [".route-state"] : [])].map(selector => {
+    const owner = { isConnected: true, ownerDocument: document,
+      getBoundingClientRect: () => { discovered = true; return { x: 0, y: 0, width: 100, height: 48 } },
+      getAnimations: () => running && discovered ? [{ pending: false, playState: "running", playbackRate: 1,
+        effect: { target: owner, getComputedTiming: () => ({ duration: .01, endTime: .01, iterations: 1 }) } }] : [],
+    }
+    selected.set(selector, [owner]); return owner
+  })
+  const context = { document, HTMLLinkElement: Link, CSSStyleSheet: Sheet, requestAnimationFrame: view.requestAnimationFrame }
+  const execute = (callback: (...values: never[]) => unknown, ...args: unknown[]) => runInNewContext(`(${callback.toString()})(...args)`, { ...context, args }) as Promise<void>
+  const start = () => {
+    const result = execute(settleShellRestoredStyles, sheet, { href, recovery, properties: ["padding-left", "font-weight"] })
+    void result.catch(() => {}); return result
+  }
+  const generic = () => settle({ evaluate: (callback: (...values: never[]) => unknown, ...args: unknown[]) => execute(callback, ...args) } as never)
+  const frame = (value?: string, at = frameTime + 16) => {
+    if (value !== undefined) { paint = value; running = false }
+    now = Math.max(now, at); frameTime = at
+    const pending = [...frames.values()]; frames.clear(); for (const callback of pending) callback(at)
+  }
+  return { start, generic, frame, owners, sheet, link, document, selected,
+    read: () => { owners[0]!.getBoundingClientRect(); return paint },
+    expire: () => { now = 1_000; for (const callback of [...timers.values()]) callback() },
+    setClock: (value: number) => { now = value },
+    setRunning: (value: boolean) => { running = value },
+    cancel: () => { events.get("pagehide")?.() },
+    get pending() { return [frames.size, timers.size, events.size] },
+  }
+}
+
+test("restoration sampling discovers the transition that generic two frames miss", async () => {
+  const generic = restorationFixture(), old = generic.generic()
+  for (let index = 0; index < 8; index++) await Promise.resolve()
+  generic.frame(); generic.frame(); await old
+  expect(generic.read()).toBe("0px")
+  const actual = restorationFixture(), result = actual.start()
+  actual.frame(); actual.frame("144px"); actual.frame(); await result
+  expect(actual.read()).toBe("144px"); expect(actual.pending).toEqual([0, 0, 0])
+})
+
+test("restoration settlement keeps stable wrong observations strict and requires distinct frames", async () => {
+  for (const recovery of [false, true]) {
+    const fixture = restorationFixture(recovery), result = fixture.start(); let completed = false
+    void result.then(() => { completed = true })
+    fixture.frame("wrong", 16); fixture.frame(undefined, 16); await Promise.resolve()
+    expect(completed).toBe(false)
+    fixture.frame(undefined, 32); await result
+    const wrong = { ...element(), styles: { "padding-left": fixture.read() } }
+    expect(() => compareShellElements([wrong], [{ ...wrong, styles: { "padding-left": "144px" } }], "Restored final CSS")).toThrow()
+    expect(fixture.pending).toEqual([0, 0, 0])
+  }
+})
+
+test("unchanged paint cannot settle while a native animation is active or invalid", async () => {
+  const fixture = restorationFixture(), result = fixture.start(); let completed = false
+  void result.then(() => { completed = true })
+  fixture.frame(); fixture.frame(); await Promise.resolve()
+  expect(completed).toBe(false)
+  expect(fixture.pending).toEqual([1, 1, 1])
+  fixture.setRunning(false); fixture.frame(); await Promise.resolve()
+  expect(completed).toBe(false)
+  expect(fixture.pending).toEqual([1, 1, 1])
+  fixture.frame(); await result; expect(completed).toBe(true); expect(fixture.pending).toEqual([0, 0, 0])
+  for (const invalid of ["paused", "nonfinite", "foreign"] as const) {
+    const current = restorationFixture(), outcome = current.start(), owner = current.owners[0]!, original = owner.getAnimations()[0]!
+    owner.getAnimations = () => [{ ...original,
+      playState: invalid === "paused" ? "paused" : original.playState,
+      effect: { target: invalid === "foreign" ? current.owners[1]! : owner,
+        getComputedTiming: () => ({ duration: invalid === "nonfinite" ? Infinity : .01, endTime: .01, iterations: 1 }) },
+    }]
+    current.frame(); await expect(outcome).rejects.toThrow(); expect(current.pending).toEqual([0, 0, 0])
+  }
+})
+
+test("restoration settlement bounds unstable paint and fails on owner or clock loss", async () => {
+  for (const mutate of [
+    (f: ReturnType<typeof restorationFixture>) => { f.sheet.disabled = true },
+    (f: ReturnType<typeof restorationFixture>) => { f.link.disabled = true },
+    (f: ReturnType<typeof restorationFixture>) => { f.link.isConnected = false },
+    (f: ReturnType<typeof restorationFixture>) => { f.document.styleSheets.length = 0 },
+    (f: ReturnType<typeof restorationFixture>) => { f.owners[0]!.isConnected = false },
+    (f: ReturnType<typeof restorationFixture>) => { f.selected.set(".wordmark", []) },
+  ]) {
+    const fixture = restorationFixture(), result = fixture.start(); mutate(fixture); fixture.frame()
+    await expect(result).rejects.toThrow(); expect(fixture.pending).toEqual([0, 0, 0])
+  }
+  const timeout = restorationFixture(), waiting = timeout.start(); timeout.frame(); timeout.expire()
+  await expect(waiting).rejects.toThrow("1000ms"); expect(timeout.pending).toEqual([0, 0, 0])
+  const regressed = restorationFixture(), invalid = regressed.start(); regressed.setClock(-1); regressed.frame(undefined, -1)
+  await expect(invalid).rejects.toThrow(); expect(regressed.pending).toEqual([0, 0, 0])
+  const cancelled = restorationFixture(), interrupted = cancelled.start(); cancelled.cancel()
+  await expect(interrupted).rejects.toThrow("closed or navigated"); expect(cancelled.pending).toEqual([0, 0, 0])
+  const backwards = restorationFixture(), badFrame = backwards.start(); backwards.frame(undefined, 16); backwards.frame(undefined, 15)
+  await expect(badFrame).rejects.toThrow("native frame"); expect(backwards.pending).toEqual([0, 0, 0])
+})
+
+test("arbitrary transient restoration paints never become expected acceptance values", async () => {
+  let seed = 0x72657374
+  const next = () => seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0
+  for (let index = 0; index < 64; index++) {
+    const fixture = restorationFixture(index % 2 === 0), result = fixture.start(), count = next() % 10 + 1
+    for (let step = 0; step < count; step++) fixture.frame()
+    const final = `${next()}px`; fixture.frame(final); fixture.frame(); await result
+    expect(fixture.read()).toBe(final); expect(fixture.pending).toEqual([0, 0, 0])
+  }
+})
 
 test("paired sides start together but results retain source order after both cleanups", async () => {
   const current = operationDeferred(), baseline = operationDeferred(), cleanup = operationDeferred(), order: string[] = []
